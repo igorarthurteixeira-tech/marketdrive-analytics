@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 
@@ -21,6 +21,11 @@ type VoteStats = {
   confirmed: number
   denied: number
   userVote: boolean | null
+}
+
+type ProfileRow = {
+  id: string
+  name: string | null
 }
 
 export default function PositivePointsSection({
@@ -49,29 +54,7 @@ export default function PositivePointsSection({
     )
   }
 
-  const getStatsFromRows = (rows: VoteRow[]) => {
-    const next: Record<string, VoteStats> = {}
-
-    for (const row of rows) {
-      if (!next[row.positive_id]) {
-        next[row.positive_id] = { confirmed: 0, denied: 0, userVote: null }
-      }
-
-      if (row.is_confirmed) {
-        next[row.positive_id].confirmed += 1
-      } else {
-        next[row.positive_id].denied += 1
-      }
-
-      if (session?.user?.id && row.user_id === session.user.id) {
-        next[row.positive_id].userVote = row.is_confirmed
-      }
-    }
-
-    return next
-  }
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setErrorMessage("")
 
@@ -100,7 +83,7 @@ export default function PositivePointsSection({
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
-      for (const row of (profilesData as any[]) ?? []) {
+      for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
       }
       setAuthorNames(mappedNames)
@@ -118,18 +101,38 @@ export default function PositivePointsSection({
       if (votesError) {
         setErrorMessage("Falha ao carregar avaliacoes dos pontos positivos.")
       } else {
-        setStats(getStatsFromRows((votesData as VoteRow[]) ?? []))
+        const nextStats: Record<string, VoteStats> = {}
+        for (const row of (votesData as VoteRow[]) ?? []) {
+          if (!nextStats[row.positive_id]) {
+            nextStats[row.positive_id] = { confirmed: 0, denied: 0, userVote: null }
+          }
+
+          if (row.is_confirmed) {
+            nextStats[row.positive_id].confirmed += 1
+          } else {
+            nextStats[row.positive_id].denied += 1
+          }
+
+          if (session?.user?.id && row.user_id === session.user.id) {
+            nextStats[row.positive_id].userVote = row.is_confirmed
+          }
+        }
+
+        setStats(nextStats)
       }
     } else {
       setStats({})
     }
 
     setLoading(false)
-  }
+  }, [vehicleVersionId, session])
 
   useEffect(() => {
-    fetchData()
-  }, [vehicleVersionId, session?.user?.id])
+    const timer = setTimeout(() => {
+      void fetchData()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [fetchData])
 
   const vote = async (positiveId: string, isConfirmed: boolean) => {
     if (!session?.user?.id) {

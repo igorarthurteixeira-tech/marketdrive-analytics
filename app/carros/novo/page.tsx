@@ -3,6 +3,7 @@
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import { useRouter } from "next/navigation"
+import Image from "next/image"
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 
 const VERSION_TIERS = [
@@ -24,6 +25,12 @@ type VehicleOption = {
   id: string
   name: string
   brandName: string
+}
+
+type VehicleQueryRow = {
+  id: string
+  name: string
+  brands: { name: string | null }[] | { name: string | null } | null
 }
 
 function normalize(text: string) {
@@ -141,7 +148,7 @@ export default function NovoCarro() {
       if (brandsData) setBrands(brandsData as Brand[])
 
       if (vehiclesData) {
-        const mapped = (vehiclesData as any[]).map((v) => {
+        const mapped = (vehiclesData as VehicleQueryRow[]).map((v) => {
           const brandRaw = Array.isArray(v.brands) ? v.brands[0] : v.brands
           return {
             id: v.id,
@@ -446,8 +453,8 @@ export default function NovoCarro() {
       }
 
       setTimeout(() => router.push("/carros"), 700)
-    } catch (err: any) {
-      setErrorMessage(err?.message ?? "Erro inesperado.")
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Erro inesperado.")
     } finally {
       setLoading(false)
     }
@@ -525,9 +532,12 @@ export default function NovoCarro() {
               {imagePreview ? (
                 <div className="border rounded-lg p-3 w-fit bg-white shadow-sm transition-all duration-300">
                   <p className="text-xs text-gray-500 mb-2">Previa</p>
-                  <img
+                  <Image
                     src={imagePreview}
                     alt="Previa da imagem selecionada"
+                    width={256}
+                    height={160}
+                    unoptimized
                     className="h-40 w-64 object-contain rounded bg-gray-50"
                   />
                   <button

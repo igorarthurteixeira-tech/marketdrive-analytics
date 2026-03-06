@@ -10,7 +10,7 @@ export default function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [profileName, setProfileName] = useState<string | null>(null)
 
-  const { session, loading, signOut } = useAuth()
+  const { session, signOut } = useAuth()
   const user = session?.user
 
   // Scroll effect

@@ -3,6 +3,7 @@
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import { useParams, useRouter } from "next/navigation"
+import Image from "next/image"
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react"
 
 const STORAGE_URL =
@@ -27,6 +28,51 @@ type EditableItem = {
   id: string | null
   value: string
   owned: boolean
+}
+
+type VersionVehicle = {
+  id: string
+  name: string | null
+  brand_id: string | null
+  image_url: string | null
+}
+
+type EditableVersionRow = {
+  id: string
+  vehicle_id: string
+  year: number | null
+  engine: string | null
+  transmission: string | null
+  potencia_cv: number | null
+  potencia_texto?: string | null
+  potencia_alcool_cv?: number | null
+  potencia_gasolina_cv?: number | null
+  potencia_rpm?: number | null
+  torque_kgfm: number | null
+  torque_texto?: string | null
+  torque_alcool_kgfm?: number | null
+  torque_gasolina_kgfm?: number | null
+  torque_rpm?: number | null
+  peso_kg: number | null
+  peso_potencia_kgcv: number | null
+  aceleracao_0_100_s: number | null
+  velocidade_maxima_kmh: number | null
+  version_name: string | null
+  version_tier: string | null
+  vehicles: VersionVehicle[] | VersionVehicle | null
+}
+
+type DefectEditableRow = {
+  id: string
+  title: string | null
+  severity: number | null
+  created_by: string | null
+}
+
+type PositiveEditableRow = {
+  id: string
+  description: string | null
+  created_by: string | null
 }
 
 function normalize(text: string) {
@@ -202,11 +248,13 @@ export default function Page() {
           )
         `
 
-      let { data: version, error } = await supabase
+      const initialVersion = await supabase
         .from("vehicle_versions")
         .select(fullSelect)
         .eq("slug", slug)
         .single()
+      let version = initialVersion.data as EditableVersionRow | null
+      let error = initialVersion.error
 
       // Fallback: permite abrir a edição mesmo se colunas novas ainda não existirem no banco.
       if (error && /column|schema cache/i.test(error.message ?? "")) {
@@ -216,8 +264,8 @@ export default function Page() {
           .eq("slug", slug)
           .single()
 
-        version = fallback.data as any
-        error = fallback.error as any
+        version = fallback.data as EditableVersionRow | null
+        error = fallback.error
       }
 
       if (error || !version) {
@@ -226,32 +274,33 @@ export default function Page() {
         return
       }
 
-      const vehicleData = Array.isArray(version.vehicles)
-        ? version.vehicles[0]
-        : version.vehicles
+      const typedVersion = version as EditableVersionRow
+      const vehicleData = Array.isArray(typedVersion.vehicles)
+        ? typedVersion.vehicles[0]
+        : typedVersion.vehicles
 
-      setVersionId(version.id)
-      setVehicleId(version.vehicle_id)
+      setVersionId(typedVersion.id)
+      setVehicleId(typedVersion.vehicle_id)
       setBrandId(vehicleData?.brand_id ?? "")
       setName(vehicleData?.name ?? "")
-      setVersionName(version.version_name ?? "")
-      setVersionTier((version.version_tier ?? "intermediaria") as (typeof VERSION_TIERS)[number])
-      setYear(String(version.year ?? ""))
-      setEngine(version.engine ?? "")
-      setTransmission(version.transmission ?? "")
-      setPowerCv(version.potencia_cv != null ? String(version.potencia_cv) : "")
-      setPowerText(version.potencia_texto ?? "")
-      setPowerAlcoholCv(version.potencia_alcool_cv != null ? String(version.potencia_alcool_cv) : "")
-      setPowerGasolineCv(version.potencia_gasolina_cv != null ? String(version.potencia_gasolina_cv) : "")
-      setPowerRpm(version.potencia_rpm != null ? String(version.potencia_rpm) : "")
-      setTorqueKgfm(version.torque_kgfm != null ? String(version.torque_kgfm) : "")
-      setTorqueText(version.torque_texto ?? "")
-      setTorqueAlcoholKgfm(version.torque_alcool_kgfm != null ? String(version.torque_alcool_kgfm) : "")
-      setTorqueGasolineKgfm(version.torque_gasolina_kgfm != null ? String(version.torque_gasolina_kgfm) : "")
-      setTorqueRpm(version.torque_rpm != null ? String(version.torque_rpm) : "")
-      setWeightKg(version.peso_kg != null ? String(version.peso_kg) : "")
-      setAcceleration0100(version.aceleracao_0_100_s != null ? String(version.aceleracao_0_100_s) : "")
-      setMaxSpeedKmh(version.velocidade_maxima_kmh != null ? String(version.velocidade_maxima_kmh) : "")
+      setVersionName(typedVersion.version_name ?? "")
+      setVersionTier((typedVersion.version_tier ?? "intermediaria") as (typeof VERSION_TIERS)[number])
+      setYear(String(typedVersion.year ?? ""))
+      setEngine(typedVersion.engine ?? "")
+      setTransmission(typedVersion.transmission ?? "")
+      setPowerCv(typedVersion.potencia_cv != null ? String(typedVersion.potencia_cv) : "")
+      setPowerText(typedVersion.potencia_texto ?? "")
+      setPowerAlcoholCv(typedVersion.potencia_alcool_cv != null ? String(typedVersion.potencia_alcool_cv) : "")
+      setPowerGasolineCv(typedVersion.potencia_gasolina_cv != null ? String(typedVersion.potencia_gasolina_cv) : "")
+      setPowerRpm(typedVersion.potencia_rpm != null ? String(typedVersion.potencia_rpm) : "")
+      setTorqueKgfm(typedVersion.torque_kgfm != null ? String(typedVersion.torque_kgfm) : "")
+      setTorqueText(typedVersion.torque_texto ?? "")
+      setTorqueAlcoholKgfm(typedVersion.torque_alcool_kgfm != null ? String(typedVersion.torque_alcool_kgfm) : "")
+      setTorqueGasolineKgfm(typedVersion.torque_gasolina_kgfm != null ? String(typedVersion.torque_gasolina_kgfm) : "")
+      setTorqueRpm(typedVersion.torque_rpm != null ? String(typedVersion.torque_rpm) : "")
+      setWeightKg(typedVersion.peso_kg != null ? String(typedVersion.peso_kg) : "")
+      setAcceleration0100(typedVersion.aceleracao_0_100_s != null ? String(typedVersion.aceleracao_0_100_s) : "")
+      setMaxSpeedKmh(typedVersion.velocidade_maxima_kmh != null ? String(typedVersion.velocidade_maxima_kmh) : "")
 
       const currentImagePath = vehicleData?.image_url ?? null
       setExistingImagePath(currentImagePath)
@@ -265,7 +314,7 @@ export default function Page() {
       const { data: defects, error: defectsError } = await supabase
         .from("defects")
         .select("id,title,severity,created_by")
-        .eq("vehicle_version_id", version.id)
+        .eq("vehicle_version_id", typedVersion.id)
 
       if (defectsError) {
         setErrorMessage("A coluna created_by em defects e obrigatoria para editar por autoria.")
@@ -276,7 +325,7 @@ export default function Page() {
       const { data: positives, error: positivesError } = await supabase
         .from("positives")
         .select("id,description,created_by")
-        .eq("vehicle_version_id", version.id)
+        .eq("vehicle_version_id", typedVersion.id)
 
       if (positivesError) {
         setErrorMessage("A coluna created_by em positives e obrigatoria para editar por autoria.")
@@ -286,23 +335,23 @@ export default function Page() {
 
       const uid = session.user.id
 
-      const chronic = (defects ?? [])
-        .filter((item: any) => (item.severity ?? 0) >= 2)
-        .map((item: any) => ({
+      const chronic = ((defects as DefectEditableRow[] | null) ?? [])
+        .filter((item) => (item.severity ?? 0) >= 2)
+        .map((item) => ({
           id: item.id,
           value: item.title ?? "",
           owned: item.created_by === uid,
         }))
 
-      const pontual = (defects ?? [])
-        .filter((item: any) => (item.severity ?? 0) < 2)
-        .map((item: any) => ({
+      const pontual = ((defects as DefectEditableRow[] | null) ?? [])
+        .filter((item) => (item.severity ?? 0) < 2)
+        .map((item) => ({
           id: item.id,
           value: item.title ?? "",
           owned: item.created_by === uid,
         }))
 
-      const positivesMapped = (positives ?? []).map((item: any) => ({
+      const positivesMapped = ((positives as PositiveEditableRow[] | null) ?? []).map((item) => ({
         id: item.id,
         value: item.description ?? "",
         owned: item.created_by === uid,
@@ -650,8 +699,8 @@ export default function Page() {
 
       setSuccessMessage("Edicao salva com sucesso.")
       setTimeout(() => router.push(`/carros/${versionSlug}`), 700)
-    } catch (err: any) {
-      setErrorMessage(err?.message ?? "Erro inesperado ao salvar.")
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : "Erro inesperado ao salvar.")
     } finally {
       setLoading(false)
     }
@@ -872,9 +921,12 @@ export default function Page() {
           {imagePreview ? (
             <div className="border rounded-lg p-3 w-fit bg-white shadow-sm">
               <p className="text-xs text-gray-500 mb-2">Previa</p>
-              <img
+              <Image
                 src={imagePreview}
                 alt="Previa da imagem selecionada"
+                width={256}
+                height={160}
+                unoptimized
                 className="h-40 w-64 object-contain rounded bg-gray-50"
               />
               <button

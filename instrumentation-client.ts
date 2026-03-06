@@ -9,10 +9,11 @@ if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
     perf.measure = ((...args: Parameters<typeof perf.measure>) => {
       try {
         return originalMeasure(...args)
-      } catch (error: any) {
-        const message = String(error?.message ?? "")
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? String(error.message ?? "") : ""
         if (message.includes("cannot have a negative time stamp")) {
-          return undefined as ReturnType<typeof perf.measure>
+          return null as unknown as ReturnType<typeof perf.measure>
         }
         throw error
       }

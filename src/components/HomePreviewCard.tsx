@@ -4,7 +4,13 @@ import Link from "next/link"
 const STORAGE_URL =
   "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
 
-export default function HomePreviewCard({ slug, name, image }: any) {
+type HomePreviewCardProps = {
+  slug: string
+  name: string
+  image: string | null
+}
+
+export default function HomePreviewCard({ slug, name, image }: HomePreviewCardProps) {
   const imageSrc = image
     ? image.startsWith("http")
       ? image

@@ -19,6 +19,28 @@ type EnrichedVehicle = {
   image_url: string | null
 }
 
+type VehicleRow = {
+  id: string
+  slug: string
+  year: number
+  engine: string
+  transmission: string
+  version_name: string | null
+  version_tier: string | null
+  vehicles:
+    | {
+        name: string | null
+        image_url: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }[]
+    | {
+        name: string | null
+        image_url: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }
+    | null
+}
+
 export default function CarrosPage() {
   const { session } = useAuth()
 
@@ -47,7 +69,7 @@ export default function CarrosPage() {
 
       if (error || !versions) return
 
-      const enriched = (versions as any[]).map((version: any) => {
+      const enriched = (versions as VehicleRow[]).map((version) => {
         const vehicle = Array.isArray(version.vehicles) ? version.vehicles[0] : version.vehicles
         const brand = Array.isArray(vehicle?.brands) ? vehicle.brands[0] : vehicle?.brands
 

@@ -1,4 +1,6 @@
-import { createClient } from "@supabase/supabase-js"
+﻿import { createClient } from "@supabase/supabase-js"
+import Image from "next/image"
+import Link from "next/link"
 import HomePreviewCard from "@/components/HomePreviewCard"
 
 const supabase = createClient(
@@ -6,8 +8,33 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+type HomeVersionRow = {
+  id: string
+  slug: string
+  year: number | null
+  image_url: string | null
+  vehicles:
+    | {
+        name: string | null
+        image_url?: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }[]
+    | {
+        name: string | null
+        image_url?: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }
+    | null
+}
+
+type HomeCar = {
+  slug: string
+  name: string
+  image: string | null
+}
+
 export default async function Home() {
-  let { data: versions, error } = await supabase
+  const initial = await supabase
     .from("vehicle_versions")
     .select(`
       id,
@@ -21,6 +48,9 @@ export default async function Home() {
       )
     `)
     .limit(5)
+
+  let versions = initial.data as HomeVersionRow[] | null
+  let error = initial.error
 
   // Fallback: some databases still keep image only in vehicle_versions.image_url.
   if (error && /column|schema cache/i.test(error.message ?? "")) {
@@ -38,32 +68,32 @@ export default async function Home() {
       `)
       .limit(5)
 
-    versions = fallback.data
+    versions = fallback.data as HomeVersionRow[] | null
     error = fallback.error
   }
 
-  const cars = versions?.map((v: any) => {
-    const vehicle = Array.isArray(v.vehicles) ? v.vehicles[0] : v.vehicles
+  const cars: HomeCar[] = versions?.map((version) => {
+    const vehicle = Array.isArray(version.vehicles) ? version.vehicles[0] : version.vehicles
     const brand = Array.isArray(vehicle?.brands) ? vehicle.brands[0] : vehicle?.brands
 
     return {
-      slug: v.slug,
-      name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${v.year ?? ""}`,
-      image: vehicle?.image_url ?? v.image_url ?? null
+      slug: version.slug,
+      name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${version.year ?? ""}`,
+      image: vehicle?.image_url ?? version.image_url ?? null,
     }
   }) ?? []
 
   return (
     <main>
-
       {/* HERO */}
       <section className="relative h-[85vh] min-h-150 flex items-center">
-
         <div className="absolute inset-0">
-          <img
+          <Image
             src="/hero.png"
             alt="Análise automotiva"
-            className="w-full h-full object-cover"
+            fill
+            priority
+            className="object-cover"
           />
         </div>
 
@@ -81,45 +111,41 @@ export default async function Home() {
           </p>
 
           <div className="flex gap-6">
-            <a
+            <Link
               href="/carros"
               className="bg-red-600 px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition"
             >
               Explorar Modelos
-            </a>
+            </Link>
 
-            <a
+            <Link
               href="/assinatura"
               className="border border-white px-6 py-3 rounded-lg hover:bg-white hover:text-black transition"
             >
               Ver Assinatura
-            </a>
+            </Link>
           </div>
         </div>
-
       </section>
 
       {/* CARDS */}
       <section className="bg-white py-24">
         <div className="max-w-7xl mx-auto px-8">
-
           <h2 className="text-3xl font-bold mb-16 text-center">
             Modelos em destaque
           </h2>
 
           <div className="flex justify-center gap-10 flex-wrap">
-            {cars?.map((car: any) => (
+            {cars.map((car) => (
               <HomePreviewCard key={car.slug} {...car} />
             ))}
           </div>
-
         </div>
       </section>
 
       {/* CTA */}
       <section className="bg-gray-50 py-24">
         <div className="max-w-4xl mx-auto px-8 text-center">
-
           <h2 className="text-3xl md:text-4xl font-bold mb-6">
             Deseja ter acesso a mais avaliações?
           </h2>
@@ -129,16 +155,15 @@ export default async function Home() {
             histórico de falhas e dados exclusivos da comunidade.
           </p>
 
-          <a
+          <Link
             href="/assinatura"
             className="inline-block bg-black text-white px-8 py-4 rounded-lg text-lg font-medium hover:bg-gray-900 transition shadow-sm"
           >
             Conhecer planos
-          </a>
-
+          </Link>
         </div>
       </section>
-
     </main>
   )
 }
+

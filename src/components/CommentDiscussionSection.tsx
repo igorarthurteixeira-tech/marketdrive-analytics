@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { FormEvent, useEffect, useMemo, useState } from "react"
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 
@@ -22,6 +22,11 @@ type VoteStats = {
   confirmed: number
   denied: number
   userVote: boolean | null
+}
+
+type ProfileRow = {
+  id: string
+  name: string | null
 }
 
 type QuotedPoint = {
@@ -82,29 +87,7 @@ export default function CommentDiscussionSection({
 
   const canInteract = Boolean(session?.user?.id)
 
-  const getStatsFromRows = (rows: VoteRow[]) => {
-    const next: Record<string, VoteStats> = {}
-
-    for (const row of rows) {
-      if (!next[row.comment_id]) {
-        next[row.comment_id] = { confirmed: 0, denied: 0, userVote: null }
-      }
-
-      if (row.is_confirmed) {
-        next[row.comment_id].confirmed += 1
-      } else {
-        next[row.comment_id].denied += 1
-      }
-
-      if (session?.user?.id && row.user_id === session.user.id) {
-        next[row.comment_id].userVote = row.is_confirmed
-      }
-    }
-
-    return next
-  }
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setErrorMessage("")
 
@@ -134,7 +117,7 @@ export default function CommentDiscussionSection({
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
-      for (const row of (profilesData as any[]) ?? []) {
+      for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
       }
       setAuthorNames(mappedNames)
@@ -152,18 +135,38 @@ export default function CommentDiscussionSection({
       if (votesError) {
         setErrorMessage("Falha ao carregar avaliacoes dos comentarios.")
       } else {
-        setStats(getStatsFromRows((votesData as VoteRow[]) ?? []))
+        const nextStats: Record<string, VoteStats> = {}
+        for (const row of (votesData as VoteRow[]) ?? []) {
+          if (!nextStats[row.comment_id]) {
+            nextStats[row.comment_id] = { confirmed: 0, denied: 0, userVote: null }
+          }
+
+          if (row.is_confirmed) {
+            nextStats[row.comment_id].confirmed += 1
+          } else {
+            nextStats[row.comment_id].denied += 1
+          }
+
+          if (session?.user?.id && row.user_id === session.user.id) {
+            nextStats[row.comment_id].userVote = row.is_confirmed
+          }
+        }
+
+        setStats(nextStats)
       }
     } else {
       setStats({})
     }
 
     setLoading(false)
-  }
+  }, [vehicleVersionId, session])
 
   useEffect(() => {
-    fetchData()
-  }, [vehicleVersionId, session?.user?.id])
+    const timer = setTimeout(() => {
+      void fetchData()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [fetchData])
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -311,7 +314,7 @@ export default function CommentDiscussionSection({
             >
               Citando: {quotedPoint.authorName}
             </Link>
-            <span className="text-gray-500">"{quotedPoint.text}"</span>
+            <span className="text-gray-500">&quot;{quotedPoint.text}&quot;</span>
             <button
               type="button"
               onClick={() => setQuotedPoint(null)}
@@ -372,7 +375,7 @@ export default function CommentDiscussionSection({
               href={`#positive-point-${parsed.quote.pointId}`}
               className="inline-flex items-center rounded-full bg-gray-100 border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:text-black hover:bg-gray-50 mb-2"
             >
-              Citou ponto de {parsed.quote.authorName}: "{parsed.quote.text}"
+              Citou ponto de {parsed.quote.authorName}: &quot;{parsed.quote.text}&quot;
             </Link>
           ) : null}
 

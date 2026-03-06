@@ -14,6 +14,49 @@ const supabase = createClient(
 const STORAGE_URL =
   "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
 
+type VersionDetail = {
+  id: string
+  year: number | null
+  engine: string | null
+  transmission: string | null
+  potencia_cv: number | null
+  potencia_texto: string | null
+  potencia_alcool_cv: number | null
+  potencia_gasolina_cv: number | null
+  potencia_rpm: number | null
+  torque_kgfm: number | null
+  torque_texto: string | null
+  torque_alcool_kgfm: number | null
+  torque_gasolina_kgfm: number | null
+  torque_rpm: number | null
+  peso_kg: number | null
+  peso_potencia_alcool_kgcv: number | null
+  peso_potencia_gasolina_kgcv: number | null
+  peso_potencia_kgcv: number | null
+  aceleracao_0_100_s: number | null
+  velocidade_maxima_kmh: number | null
+  version_name: string | null
+  version_tier: string | null
+  vehicles:
+    | {
+        name: string | null
+        image_url: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }[]
+    | {
+        name: string | null
+        image_url: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }
+    | null
+}
+
+type DefectRow = {
+  id: string
+  title: string
+  severity: number
+}
+
 export default async function Page({
   params,
 }: {
@@ -21,7 +64,7 @@ export default async function Page({
 }) {
   const { slug } = await params
 
-  const { data: version } = await supabase
+  const { data: versionRaw } = await supabase
     .from("vehicle_versions")
     .select(`
       id,
@@ -55,6 +98,7 @@ export default async function Page({
     .eq("slug", slug)
     .single()
 
+  const version = versionRaw as VersionDetail | null
   if (!version) notFound()
 
   const vehicleData = Array.isArray(version.vehicles)
@@ -69,7 +113,7 @@ export default async function Page({
   const modelName = vehicleData?.name ?? ""
   const imagePath = vehicleData?.image_url ?? ""
 
-  const pickFirst = (source: any, keys: string[]) => {
+  const pickFirst = (source: Record<string, unknown>, keys: string[]) => {
     for (const key of keys) {
       if (source?.[key] !== undefined && source?.[key] !== null) {
         return source[key]
@@ -158,13 +202,14 @@ export default async function Page({
     },
   ].filter((item) => isValidValue(item.value))
 
-  const { data: defects } = await supabase
+  const { data: defectsRaw } = await supabase
     .from("defects")
     .select("*")
     .eq("vehicle_version_id", version.id)
 
-  const defeitosCronicos = defects?.filter((d: any) => d.severity >= 2) ?? []
-  const problemasPontuais = defects?.filter((d: any) => d.severity < 2) ?? []
+  const defects = (defectsRaw as DefectRow[] | null) ?? []
+  const defeitosCronicos = defects.filter((defect) => defect.severity >= 2)
+  const problemasPontuais = defects.filter((defect) => defect.severity < 2)
 
   return (
     <main className="bg-gradient-to-b from-white to-gray-50 min-h-screen pt-32">
@@ -227,14 +272,14 @@ export default async function Page({
         <div>
           <h2 className="text-2xl font-semibold mb-6">Defeitos Cronicos</h2>
           <ul className="space-y-3 text-gray-700">
-            {defeitosCronicos.map((item: any) => (
+            {defeitosCronicos.map((item) => (
               <li key={item.id}>- {item.title}</li>
             ))}
           </ul>
 
           <h2 className="text-2xl font-semibold mt-12 mb-6">Problemas Pontuais</h2>
           <ul className="space-y-3 text-gray-700">
-            {problemasPontuais.map((item: any) => (
+            {problemasPontuais.map((item) => (
               <li key={item.id}>- {item.title}</li>
             ))}
           </ul>
