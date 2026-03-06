@@ -2,9 +2,10 @@ import { Star } from "lucide-react"
 
 interface Props {
   rating: number
+  showValue?: boolean
 }
 
-export default function StarRating({ rating }: Props) {
+export default function StarRating({ rating, showValue = true }: Props) {
   const fullStars = Math.floor(rating)
 
   return (
@@ -20,9 +21,11 @@ export default function StarRating({ rating }: Props) {
           }
         />
       ))}
-      <span className="text-sm text-gray-600 ml-2">
-        {rating.toFixed(1)}
-      </span>
+      {showValue ? (
+        <span className="text-sm text-gray-600 ml-2">
+          {rating.toFixed(1)}
+        </span>
+      ) : null}
     </div>
   )
 }

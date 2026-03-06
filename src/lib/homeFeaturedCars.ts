@@ -1,0 +1,262 @@
+import { createClient } from "@supabase/supabase-js"
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+const MAX_HOME_CARDS = 5
+
+type VersionRow = {
+  id: string
+  slug: string
+  year: number | null
+  image_url: string | null
+  home_featured?: boolean | null
+  home_featured_order?: number | null
+  vehicles:
+    | {
+        name: string | null
+        image_url?: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }[]
+    | {
+        name: string | null
+        image_url?: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }
+    | null
+}
+
+type CountRow = {
+  vehicle_version_id: string | null
+}
+
+type PositiveRow = {
+  id: string
+  vehicle_version_id: string
+  description: string
+}
+
+type PositiveVoteRow = {
+  positive_id: string
+  is_confirmed: boolean
+}
+
+type RatingRow = {
+  vehicle_version_id: string
+  rating: number
+}
+
+export type HomeCar = {
+  id: string
+  slug: string
+  name: string
+  image: string | null
+  rating: number | null
+  ratingCount: number
+  topPositive: string | null
+}
+
+function toCard(
+  version: VersionRow,
+  meta?: { rating?: number | null; ratingCount?: number; topPositive?: string | null }
+): HomeCar {
+  const vehicle = Array.isArray(version.vehicles) ? version.vehicles[0] : version.vehicles
+  const brand = Array.isArray(vehicle?.brands) ? vehicle.brands[0] : vehicle?.brands
+
+  return {
+    id: version.id,
+    slug: version.slug,
+    name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${version.year ?? ""}`.trim(),
+    image: vehicle?.image_url ?? version.image_url ?? null,
+    rating: meta?.rating ?? null,
+    ratingCount: meta?.ratingCount ?? 0,
+    topPositive: meta?.topPositive ?? null,
+  }
+}
+
+function buildCountMap(rows: CountRow[] | null): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const row of rows ?? []) {
+    if (!row.vehicle_version_id) continue
+    counts[row.vehicle_version_id] = (counts[row.vehicle_version_id] ?? 0) + 1
+  }
+  return counts
+}
+
+async function enrichCards(selected: VersionRow[]): Promise<HomeCar[]> {
+  if (!selected.length) return []
+
+  const versionIds = selected.map((version) => version.id)
+  const ratingByVersion: Record<string, { total: number; sum: number }> = {}
+
+  const ratingsRes = await supabase
+    .from("vehicle_version_ratings")
+    .select("vehicle_version_id,rating")
+    .in("vehicle_version_id", versionIds)
+
+  if (!ratingsRes.error) {
+    for (const row of (ratingsRes.data as RatingRow[] | null) ?? []) {
+      const current = ratingByVersion[row.vehicle_version_id] ?? { total: 0, sum: 0 }
+      current.total += 1
+      current.sum += row.rating
+      ratingByVersion[row.vehicle_version_id] = current
+    }
+  }
+
+  const positivesRes = await supabase
+    .from("positives")
+    .select("id,vehicle_version_id,description")
+    .in("vehicle_version_id", versionIds)
+
+  const positives = (positivesRes.data as PositiveRow[] | null) ?? []
+  const positiveIds = positives.map((positive) => positive.id)
+
+  const votesRes =
+    positiveIds.length > 0
+      ? await supabase
+          .from("positive_votes")
+          .select("positive_id,is_confirmed")
+          .in("positive_id", positiveIds)
+      : { data: [] as PositiveVoteRow[] }
+
+  const votes = (votesRes.data as PositiveVoteRow[] | null) ?? []
+
+  const positiveVotesMap: Record<string, { total: number; confirmed: number }> = {}
+  for (const vote of votes) {
+    const current = positiveVotesMap[vote.positive_id] ?? { total: 0, confirmed: 0 }
+    current.total += 1
+    if (vote.is_confirmed) current.confirmed += 1
+    positiveVotesMap[vote.positive_id] = current
+  }
+
+  const positivesByVersion: Record<string, PositiveRow[]> = {}
+  for (const positive of positives) {
+    positivesByVersion[positive.vehicle_version_id] = [
+      ...(positivesByVersion[positive.vehicle_version_id] ?? []),
+      positive,
+    ]
+  }
+
+  const metaByVersion: Record<string, { rating: number | null; ratingCount: number; topPositive: string | null }> = {}
+  for (const version of selected) {
+    const points = positivesByVersion[version.id] ?? []
+    const versionRatingStats = ratingByVersion[version.id]
+    const rating =
+      versionRatingStats && versionRatingStats.total > 0
+        ? Number((versionRatingStats.sum / versionRatingStats.total).toFixed(1))
+        : null
+    const ratingCount = versionRatingStats?.total ?? 0
+
+    const rankedPoints = [...points].sort((a, b) => {
+      const statsA = positiveVotesMap[a.id]?.total ?? 0
+      const statsB = positiveVotesMap[b.id]?.total ?? 0
+      if (statsA !== statsB) return statsB - statsA
+      const confA = positiveVotesMap[a.id]?.confirmed ?? 0
+      const confB = positiveVotesMap[b.id]?.confirmed ?? 0
+      return confB - confA
+    })
+
+    metaByVersion[version.id] = {
+      rating,
+      ratingCount,
+      topPositive: rankedPoints[0]?.description ?? null,
+    }
+  }
+
+  return selected.map((version) => toCard(version, metaByVersion[version.id]))
+}
+
+export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
+  const selectWithFeatured = `
+    id,
+    slug,
+    year,
+    image_url,
+    home_featured,
+    home_featured_order,
+    vehicles (
+      name,
+      image_url,
+      brands ( name )
+    )
+  `
+
+  const selectFallback = `
+    id,
+    slug,
+    year,
+    image_url,
+    vehicles (
+      name,
+      image_url,
+      brands ( name )
+    )
+  `
+
+  const initial = await supabase
+    .from("vehicle_versions")
+    .select(selectWithFeatured)
+    .order("year", { ascending: false })
+
+  let versions = initial.data as VersionRow[] | null
+  let error = initial.error
+
+  // Backward compatibility when featured columns are not yet present.
+  if (error && /column|schema cache/i.test(error.message ?? "")) {
+    const fallback = await supabase
+      .from("vehicle_versions")
+      .select(selectFallback)
+      .order("year", { ascending: false })
+
+    versions = fallback.data as VersionRow[] | null
+    error = fallback.error
+  }
+
+  if (error || !versions?.length) return []
+
+  const fixed = versions
+    .filter((version) => version.home_featured === true)
+    .sort((a, b) => {
+      const orderA = a.home_featured_order ?? Number.MAX_SAFE_INTEGER
+      const orderB = b.home_featured_order ?? Number.MAX_SAFE_INTEGER
+      if (orderA !== orderB) return orderA - orderB
+      return (b.year ?? 0) - (a.year ?? 0)
+    })
+
+  const fixedIds = new Set(fixed.map((version) => version.id))
+  const available = versions.filter((version) => !fixedIds.has(version.id))
+
+  if (fixed.length >= MAX_HOME_CARDS) {
+    return enrichCards(fixed.slice(0, MAX_HOME_CARDS))
+  }
+
+  const [commentsRes, positivesRes, defectsRes] = await Promise.all([
+    supabase.from("vehicle_comments").select("vehicle_version_id"),
+    supabase.from("positives").select("vehicle_version_id"),
+    supabase.from("defects").select("vehicle_version_id"),
+  ])
+
+  const commentsCount = buildCountMap(commentsRes.data as CountRow[] | null)
+  const positivesCount = buildCountMap(positivesRes.data as CountRow[] | null)
+  const defectsCount = buildCountMap(defectsRes.data as CountRow[] | null)
+
+  // Popularity score balances community engagement and amount of structured data.
+  const sortedByPopularity = [...available].sort((a, b) => {
+    const scoreA =
+      (commentsCount[a.id] ?? 0) * 4 +
+      (positivesCount[a.id] ?? 0) * 3 +
+      (defectsCount[a.id] ?? 0)
+    const scoreB =
+      (commentsCount[b.id] ?? 0) * 4 +
+      (positivesCount[b.id] ?? 0) * 3 +
+      (defectsCount[b.id] ?? 0)
+
+    if (scoreA !== scoreB) return scoreB - scoreA
+    return (b.year ?? 0) - (a.year ?? 0)
+  })
+
+  const selected = [...fixed, ...sortedByPopularity].slice(0, MAX_HOME_CARDS)
+  return enrichCards(selected)
+}

@@ -2,9 +2,9 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@supabase/supabase-js"
-import StarRating from "@/components/ui/StarRating"
 import PositivePointsSection from "@/components/PositivePointsSection"
 import CommentDiscussionSection from "@/components/CommentDiscussionSection"
+import VersionRatingSection from "@/components/VersionRatingSection"
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,6 +16,7 @@ const STORAGE_URL =
 
 type VersionDetail = {
   id: string
+  vehicle_id: string
   year: number | null
   engine: string | null
   transmission: string | null
@@ -68,6 +69,7 @@ export default async function Page({
     .from("vehicle_versions")
     .select(`
       id,
+      vehicle_id,
       year,
       engine,
       transmission,
@@ -227,7 +229,10 @@ export default async function Page({
           </Link>
         </div>
         <p className="text-gray-600 mb-4">{version.version_tier}</p>
-        <StarRating rating={4} />
+        <VersionRatingSection
+          vehicleVersionId={version.id}
+          vehicleId={version.vehicle_id}
+        />
       </section>
 
       <section className="max-w-7xl mx-auto px-8 pb-16">
