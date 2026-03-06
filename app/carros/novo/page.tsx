@@ -79,19 +79,23 @@ export default function NovoCarro() {
   const [year, setYear] = useState("")
   const [engine, setEngine] = useState("")
   const [transmission, setTransmission] = useState("")
-  const [powerCv, setPowerCv] = useState("")
   const [powerText, setPowerText] = useState("")
   const [powerAlcoholCv, setPowerAlcoholCv] = useState("")
   const [powerGasolineCv, setPowerGasolineCv] = useState("")
   const [powerRpm, setPowerRpm] = useState("")
-  const [torqueKgfm, setTorqueKgfm] = useState("")
   const [torqueText, setTorqueText] = useState("")
   const [torqueAlcoholKgfm, setTorqueAlcoholKgfm] = useState("")
   const [torqueGasolineKgfm, setTorqueGasolineKgfm] = useState("")
   const [torqueRpm, setTorqueRpm] = useState("")
+  const [consumptionGasCity, setConsumptionGasCity] = useState("")
+  const [consumptionGasHighway, setConsumptionGasHighway] = useState("")
+  const [consumptionAlcoholCity, setConsumptionAlcoholCity] = useState("")
+  const [consumptionAlcoholHighway, setConsumptionAlcoholHighway] = useState("")
   const [weightKg, setWeightKg] = useState("")
   const [acceleration0100, setAcceleration0100] = useState("")
   const [maxSpeedKmh, setMaxSpeedKmh] = useState("")
+  const [latinNcapPre2021, setLatinNcapPre2021] = useState("")
+  const [latinNcapPost2021, setLatinNcapPost2021] = useState("")
   const [chronicDefects, setChronicDefects] = useState<string[]>([])
   const [pontualDefects, setPontualDefects] = useState<string[]>([])
   const [positivePoints, setPositivePoints] = useState<string[]>([])
@@ -259,20 +263,24 @@ export default function NovoCarro() {
 
     try {
       if (!year || !engine || !transmission || !versionName) {
-        throw new Error("Preencha todos os campos da versao.")
+        throw new Error("Preencha todos os campos da versão.")
       }
 
       const chronicList = sanitizeList(chronicDefects)
       const pontualList = sanitizeList(pontualDefects)
       const positivesList = sanitizeList(positivePoints)
-      const potenciaCv = parseOptionalNumber(powerCv)
       const potenciaAlcool = parseOptionalNumber(powerAlcoholCv)
       const potenciaGasolina = parseOptionalNumber(powerGasolineCv)
+      const potenciaCv = potenciaAlcool ?? potenciaGasolina ?? null
       const potenciaRpm = parseOptionalNumber(powerRpm)
-      const torque = parseOptionalNumber(torqueKgfm)
       const torqueAlcool = parseOptionalNumber(torqueAlcoholKgfm)
       const torqueGasolina = parseOptionalNumber(torqueGasolineKgfm)
+      const torque = torqueAlcool ?? torqueGasolina ?? null
       const torqueRefRpm = parseOptionalNumber(torqueRpm)
+      const consumoGasolinaUrbano = parseOptionalNumber(consumptionGasCity)
+      const consumoGasolinaEstrada = parseOptionalNumber(consumptionGasHighway)
+      const consumoEtanolUrbano = parseOptionalNumber(consumptionAlcoholCity)
+      const consumoEtanolEstrada = parseOptionalNumber(consumptionAlcoholHighway)
       const pesoKg = parseOptionalNumber(weightKg)
       const pesoPotenciaAlcool =
         potenciaAlcool && pesoKg
@@ -283,11 +291,14 @@ export default function NovoCarro() {
           ? Number((pesoKg / potenciaGasolina).toFixed(2))
           : null
       const pesoPotencia =
-        potenciaCv && pesoKg
-          ? Number((pesoKg / potenciaCv).toFixed(2))
-          : null
+        pesoPotenciaAlcool && !pesoPotenciaGasolina
+          ? pesoPotenciaAlcool
+          : (!pesoPotenciaAlcool && pesoPotenciaGasolina ? pesoPotenciaGasolina : null)
+      const aceleracaoTexto = acceleration0100.trim() || null
       const aceleracao = parseOptionalNumber(acceleration0100)
       const velocidadeMaxima = parseOptionalNumber(maxSpeedKmh)
+      const latinNcapAte2021 = latinNcapPre2021.trim() || null
+      const latinNcapPos2021 = latinNcapPost2021.trim() || null
 
       let createdVersionId = ""
 
@@ -295,9 +306,12 @@ export default function NovoCarro() {
         if (!brandId || !name) {
           throw new Error("Selecione marca e informe o nome do modelo.")
         }
+        if (!image) {
+          throw new Error("A imagem do modelo é obrigatória.")
+        }
 
         const brand = brands.find((b) => b.id === brandId)
-        if (!brand) throw new Error("Marca invalida.")
+        if (!brand) throw new Error("Marca inválida.")
 
         const imagePath = await uploadImageIfNeeded()
 
@@ -315,7 +329,7 @@ export default function NovoCarro() {
           .single()
 
         if (vehicleError || !vehicle) {
-          throw new Error("Nao foi possivel criar o modelo. Verifique duplicidade.")
+          throw new Error("Não foi possível criar o modelo. Verifique duplicidade.")
         }
 
         const versionSlug = generateVersionSlug(
@@ -325,10 +339,11 @@ export default function NovoCarro() {
           year
         )
 
-        const { data: createdVersion, error: versionError } = await supabase
+        let { data: createdVersion, error: versionError } = await supabase
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicle.id,
+            image_url: imagePath,
             year: Number(year),
             engine,
             transmission,
@@ -342,12 +357,19 @@ export default function NovoCarro() {
             torque_alcool_kgfm: torqueAlcool,
             torque_gasolina_kgfm: torqueGasolina,
             torque_rpm: torqueRefRpm,
+            consumo_gasolina_urbano_kml: consumoGasolinaUrbano,
+            consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
+            consumo_etanol_urbano_kml: consumoEtanolUrbano,
+            consumo_etanol_estrada_kml: consumoEtanolEstrada,
             peso_kg: pesoKg,
             peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
             peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
             peso_potencia_kgcv: pesoPotencia,
+            aceleracao_texto: aceleracaoTexto,
             aceleracao_0_100_s: aceleracao,
             velocidade_maxima_kmh: velocidadeMaxima,
+            latin_ncap_pre_2021: latinNcapAte2021,
+            latin_ncap_post_2021: latinNcapPos2021,
             version_name: versionName,
             version_tier: versionTier,
             slug: versionSlug,
@@ -355,12 +377,48 @@ export default function NovoCarro() {
           .select("id")
           .single()
 
+        if (versionError && /column|schema cache/i.test(versionError.message ?? "")) {
+          const fallback = await supabase
+            .from("vehicle_versions")
+            .insert({
+              vehicle_id: vehicle.id,
+              image_url: imagePath,
+              year: Number(year),
+              engine,
+              transmission,
+              potencia_cv: potenciaCv,
+              potencia_texto: powerText.trim() || null,
+              potencia_alcool_cv: potenciaAlcool,
+              potencia_gasolina_cv: potenciaGasolina,
+              potencia_rpm: potenciaRpm,
+              torque_kgfm: torque,
+              torque_texto: torqueText.trim() || null,
+              torque_alcool_kgfm: torqueAlcool,
+              torque_gasolina_kgfm: torqueGasolina,
+              torque_rpm: torqueRefRpm,
+              peso_kg: pesoKg,
+              peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
+              peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
+              peso_potencia_kgcv: pesoPotencia,
+              aceleracao_0_100_s: aceleracao,
+              velocidade_maxima_kmh: velocidadeMaxima,
+              version_name: versionName,
+              version_tier: versionTier,
+              slug: versionSlug,
+            })
+            .select("id")
+            .single()
+
+          createdVersion = fallback.data
+          versionError = fallback.error
+        }
+
         if (versionError || !createdVersion) {
-          throw new Error("Modelo criado, mas falhou ao criar a versao.")
+          throw new Error("Modelo criado, mas falhou ao criar a versão.")
         }
 
         createdVersionId = createdVersion.id
-        setSuccessMessage("Modelo e versao criados com sucesso.")
+        setSuccessMessage("Modelo e versão criados com sucesso.")
       } else {
         if (!vehicleId || !selectedVehicle) {
           throw new Error("Selecione um modelo existente.")
@@ -373,7 +431,7 @@ export default function NovoCarro() {
           year
         )
 
-        const { data: createdVersion, error: versionError } = await supabase
+        let { data: createdVersion, error: versionError } = await supabase
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicleId,
@@ -390,12 +448,19 @@ export default function NovoCarro() {
             torque_alcool_kgfm: torqueAlcool,
             torque_gasolina_kgfm: torqueGasolina,
             torque_rpm: torqueRefRpm,
+            consumo_gasolina_urbano_kml: consumoGasolinaUrbano,
+            consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
+            consumo_etanol_urbano_kml: consumoEtanolUrbano,
+            consumo_etanol_estrada_kml: consumoEtanolEstrada,
             peso_kg: pesoKg,
             peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
             peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
             peso_potencia_kgcv: pesoPotencia,
+            aceleracao_texto: aceleracaoTexto,
             aceleracao_0_100_s: aceleracao,
             velocidade_maxima_kmh: velocidadeMaxima,
+            latin_ncap_pre_2021: latinNcapAte2021,
+            latin_ncap_post_2021: latinNcapPos2021,
             version_name: versionName,
             version_tier: versionTier,
             slug: versionSlug,
@@ -403,12 +468,47 @@ export default function NovoCarro() {
           .select("id")
           .single()
 
+        if (versionError && /column|schema cache/i.test(versionError.message ?? "")) {
+          const fallback = await supabase
+            .from("vehicle_versions")
+            .insert({
+              vehicle_id: vehicleId,
+              year: Number(year),
+              engine,
+              transmission,
+              potencia_cv: potenciaCv,
+              potencia_texto: powerText.trim() || null,
+              potencia_alcool_cv: potenciaAlcool,
+              potencia_gasolina_cv: potenciaGasolina,
+              potencia_rpm: potenciaRpm,
+              torque_kgfm: torque,
+              torque_texto: torqueText.trim() || null,
+              torque_alcool_kgfm: torqueAlcool,
+              torque_gasolina_kgfm: torqueGasolina,
+              torque_rpm: torqueRefRpm,
+              peso_kg: pesoKg,
+              peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
+              peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
+              peso_potencia_kgcv: pesoPotencia,
+              aceleracao_0_100_s: aceleracao,
+              velocidade_maxima_kmh: velocidadeMaxima,
+              version_name: versionName,
+              version_tier: versionTier,
+              slug: versionSlug,
+            })
+            .select("id")
+            .single()
+
+          createdVersion = fallback.data
+          versionError = fallback.error
+        }
+
         if (versionError || !createdVersion) {
-          throw new Error("Nao foi possivel criar a versao. Verifique duplicidade.")
+          throw new Error("Não foi possível criar a versão. Verifique duplicidade.")
         }
 
         createdVersionId = createdVersion.id
-        setSuccessMessage("Versao criada com sucesso.")
+        setSuccessMessage("Versão criada com sucesso.")
       }
 
       if (createdVersionId && (chronicList.length || pontualList.length)) {
@@ -432,7 +532,7 @@ export default function NovoCarro() {
           .insert(defectsPayload)
 
         if (defectsError) {
-          throw new Error(`Versao salva, mas falhou ao salvar os defeitos: ${defectsError.message}`)
+          throw new Error(`Versão salva, mas falhou ao salvar os defeitos: ${defectsError.message}`)
         }
       }
 
@@ -448,7 +548,7 @@ export default function NovoCarro() {
           .insert(positivesPayload)
 
         if (positivesError) {
-          throw new Error(`Versao salva, mas falhou ao salvar os pontos positivos: ${positivesError.message}`)
+          throw new Error(`Versão salva, mas falhou ao salvar os pontos positivos: ${positivesError.message}`)
         }
       }
 
@@ -463,8 +563,8 @@ export default function NovoCarro() {
   if (authLoading || plan === null) return null
 
   return (
-    <div className="min-h-screen max-w-3xl mx-auto p-10">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">Cadastro de Veiculos</h1>
+    <div className="min-h-screen max-w-3xl mx-auto px-10 pt-28 pb-10">
+      <h1 className="text-3xl font-bold mb-8 tracking-tight">Cadastro de Veículos</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm p-6 shadow-sm transition-all duration-300">
         <div className="flex gap-6">
@@ -476,7 +576,7 @@ export default function NovoCarro() {
               onChange={() => setMode("model")}
               className="cursor-pointer"
             />
-            Novo modelo + versao
+            Novo modelo + versão
           </label>
 
           <label className="flex items-center gap-2">
@@ -487,7 +587,7 @@ export default function NovoCarro() {
               onChange={() => setMode("version")}
               className="cursor-pointer"
             />
-            Apenas nova versao
+            Apenas nova versão
           </label>
         </div>
 
@@ -531,10 +631,10 @@ export default function NovoCarro() {
 
               {imagePreview ? (
                 <div className="border rounded-lg p-3 w-fit bg-white shadow-sm transition-all duration-300">
-                  <p className="text-xs text-gray-500 mb-2">Previa</p>
+                  <p className="text-xs text-gray-500 mb-2">Prévia</p>
                   <Image
                     src={imagePreview}
-                    alt="Previa da imagem selecionada"
+                    alt="Prévia da imagem selecionada"
                     width={256}
                     height={160}
                     unoptimized
@@ -574,7 +674,7 @@ export default function NovoCarro() {
 
         <input
           type="text"
-          placeholder="Nome da versao (ex: Highline, GTS, Track)"
+          placeholder="Nome da versão (ex: Highline, GTS, Track)"
           value={versionName}
           onChange={(e) => setVersionName(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -614,7 +714,7 @@ export default function NovoCarro() {
 
         <input
           type="text"
-          placeholder="Transmissao (ex: AT6)"
+          placeholder="Transmissão (ex: AT6)"
           value={transmission}
           onChange={(e) => setTransmission(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -622,23 +722,15 @@ export default function NovoCarro() {
         />
 
         <h3 className="text-lg font-semibold text-gray-900 mt-2">
-          Especificacoes da versao (opcional)
+          Especificações da versão (opcional)
         </h3>
         <p className="text-sm text-gray-500">
-          Voce pode preencher em texto completo ou em campos separados por combustivel + rpm.
+          Você pode preencher em texto completo ou em campos separados por combustível + rpm.
         </p>
 
         <input
           type="text"
-          placeholder="Potencia de referencia (cv) - usada para calcular peso/potencia"
-          value={powerCv}
-          onChange={(e) => setPowerCv(e.target.value)}
-          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-        />
-
-        <input
-          type="text"
-          placeholder="Potencia (texto completo) - ex: 116 cv (E) / 109 cv (G) a 5.000 rpm"
+          placeholder="Potência (texto completo) - ex: 116 cv (E) / 109 cv (G) a 5.000 rpm"
           value={powerText}
           onChange={(e) => setPowerText(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -647,34 +739,26 @@ export default function NovoCarro() {
         <div className="grid sm:grid-cols-3 gap-3">
           <input
             type="text"
-            placeholder="Potencia E (cv)"
+            placeholder="Potência E (cv)"
             value={powerAlcoholCv}
             onChange={(e) => setPowerAlcoholCv(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
           <input
             type="text"
-            placeholder="Potencia G (cv)"
+            placeholder="Potência G (cv)"
             value={powerGasolineCv}
             onChange={(e) => setPowerGasolineCv(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
           <input
             type="text"
-            placeholder="Potencia rpm"
+            placeholder="Potência rpm"
             value={powerRpm}
             onChange={(e) => setPowerRpm(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
         </div>
-
-        <input
-          type="text"
-          placeholder="Torque de referencia (kgfm) - ex: 16.8"
-          value={torqueKgfm}
-          onChange={(e) => setTorqueKgfm(e.target.value)}
-          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-        />
 
         <input
           type="text"
@@ -708,6 +792,40 @@ export default function NovoCarro() {
           />
         </div>
 
+        <h4 className="text-base font-semibold text-gray-900 mt-1">
+          Consumo (km/l)
+        </h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Gasolina urbano (km/l)"
+            value={consumptionGasCity}
+            onChange={(e) => setConsumptionGasCity(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Gasolina estrada (km/l)"
+            value={consumptionGasHighway}
+            onChange={(e) => setConsumptionGasHighway(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Etanol urbano (km/l)"
+            value={consumptionAlcoholCity}
+            onChange={(e) => setConsumptionAlcoholCity(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Etanol estrada (km/l)"
+            value={consumptionAlcoholHighway}
+            onChange={(e) => setConsumptionAlcoholHighway(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
+
         <input
           type="text"
           placeholder="Peso (kg) - ex: 1168"
@@ -718,7 +836,7 @@ export default function NovoCarro() {
 
         <input
           type="text"
-          placeholder="Aceleracao 0-100 (s) - ex: 10.3"
+          placeholder="Aceleração 0-100 (texto completo) - ex: 10,3 s (E) / 10,8 s (G)"
           value={acceleration0100}
           onChange={(e) => setAcceleration0100(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -726,15 +844,32 @@ export default function NovoCarro() {
 
         <input
           type="text"
-          placeholder="Velocidade maxima (km/h) - ex: 190"
+          placeholder="Velocidade máxima (km/h) - ex: 190"
           value={maxSpeedKmh}
           onChange={(e) => setMaxSpeedKmh(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
         />
 
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Latin NCAP (até 2021) - ex: 5 estrelas"
+            value={latinNcapPre2021}
+            onChange={(e) => setLatinNcapPre2021(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Latin NCAP (a partir de 2021) - ex: 3 estrelas"
+            value={latinNcapPost2021}
+            onChange={(e) => setLatinNcapPost2021(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
+
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">
-            Defeitos cronicos
+            Defeitos crônicos
           </label>
           {chronicDefects.map((item, index) => (
             <div key={`chronic-${index}`} className="flex gap-2">
@@ -759,7 +894,7 @@ export default function NovoCarro() {
             onClick={() => addListItem(setChronicDefects)}
             className="text-sm text-gray-700 hover:text-black transition-colors duration-200 cursor-pointer"
           >
-            + Adicionar defeito cronico
+            + Adicionar defeito crônico
           </button>
         </div>
 
@@ -839,4 +974,5 @@ export default function NovoCarro() {
     </div>
   )
 }
+
 

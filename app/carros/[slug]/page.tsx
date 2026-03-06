@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js"
 import PositivePointsSection from "@/components/PositivePointsSection"
 import CommentDiscussionSection from "@/components/CommentDiscussionSection"
 import VersionRatingSection from "@/components/VersionRatingSection"
-
+import DefectPointsSection from "@/components/DefectPointsSection"
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -17,6 +17,7 @@ const STORAGE_URL =
 type VersionDetail = {
   id: string
   vehicle_id: string
+  image_url?: string | null
   year: number | null
   engine: string | null
   transmission: string | null
@@ -30,6 +31,12 @@ type VersionDetail = {
   torque_alcool_kgfm: number | null
   torque_gasolina_kgfm: number | null
   torque_rpm: number | null
+  consumo_gasolina_urbano_kml?: number | null
+  consumo_gasolina_estrada_kml?: number | null
+  consumo_etanol_urbano_kml?: number | null
+  consumo_etanol_estrada_kml?: number | null
+  latin_ncap_pre_2021?: string | null
+  latin_ncap_post_2021?: string | null
   peso_kg: number | null
   peso_potencia_alcool_kgcv: number | null
   peso_potencia_gasolina_kgcv: number | null
@@ -52,22 +59,61 @@ type VersionDetail = {
     | null
 }
 
-type DefectRow = {
-  id: string
-  title: string
-  severity: number
+type SpecItem = {
+  label: string
+  value: unknown
+  suffix?: string
 }
 
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams?: Promise<{ v?: string }>
 }) {
   const { slug } = await params
+  const query = (await searchParams) ?? {}
 
-  const { data: versionRaw } = await supabase
-    .from("vehicle_versions")
-    .select(`
+  const fullSelect = `
+      id,
+      vehicle_id,
+      image_url,
+      year,
+      engine,
+      transmission,
+      potencia_cv,
+      potencia_texto,
+      potencia_alcool_cv,
+      potencia_gasolina_cv,
+      potencia_rpm,
+      torque_kgfm,
+      torque_texto,
+      torque_alcool_kgfm,
+      torque_gasolina_kgfm,
+      torque_rpm,
+      consumo_gasolina_urbano_kml,
+      consumo_gasolina_estrada_kml,
+      consumo_etanol_urbano_kml,
+      consumo_etanol_estrada_kml,
+      latin_ncap_pre_2021,
+      latin_ncap_post_2021,
+      peso_kg,
+      peso_potencia_alcool_kgcv,
+      peso_potencia_gasolina_kgcv,
+      peso_potencia_kgcv,
+      aceleracao_0_100_s,
+      velocidade_maxima_kmh,
+      version_name,
+      version_tier,
+      vehicles (
+        name,
+        image_url,
+        brands ( name )
+      )
+    `
+
+  const fallbackSelect = `
       id,
       vehicle_id,
       year,
@@ -96,11 +142,28 @@ export default async function Page({
         image_url,
         brands ( name )
       )
-    `)
+    `
+
+  const initial = await supabase
+    .from("vehicle_versions")
+    .select(fullSelect)
     .eq("slug", slug)
     .single()
 
-  const version = versionRaw as VersionDetail | null
+  let versionRaw = initial.data as VersionDetail | null
+  let versionError = initial.error
+
+  if (versionError && /column|schema cache/i.test(versionError.message ?? "")) {
+    const fallback = await supabase
+      .from("vehicle_versions")
+      .select(fallbackSelect)
+      .eq("slug", slug)
+      .single()
+    versionRaw = fallback.data as VersionDetail | null
+    versionError = fallback.error
+  }
+
+  const version = versionRaw
   if (!version) notFound()
 
   const vehicleData = Array.isArray(version.vehicles)
@@ -113,7 +176,11 @@ export default async function Page({
 
   const brandName = brandData?.name ?? ""
   const modelName = vehicleData?.name ?? ""
-  const imagePath = vehicleData?.image_url ?? ""
+  const imagePath = version.image_url ?? vehicleData?.image_url ?? ""
+  const imageVersion = query.v ? encodeURIComponent(query.v) : ""
+  const imageSrc = imagePath
+    ? `${STORAGE_URL}${imagePath}${imageVersion ? `?v=${imageVersion}` : ""}`
+    : ""
 
   const pickFirst = (source: Record<string, unknown>, keys: string[]) => {
     for (const key of keys) {
@@ -131,10 +198,19 @@ export default async function Page({
     return true
   }
 
-  const specItems = [
-    { label: "Motorizacao", value: version.engine },
+  const formatFuelConsumption = (alcohol: unknown, gasoline: unknown) => {
+    const alcoholValid = isValidValue(alcohol)
+    const gasolineValid = isValidValue(gasoline)
+    if (!alcoholValid && !gasolineValid) return null
+    const alcoholText = alcoholValid ? `${alcohol} km/l (E)` : ""
+    const gasolineText = gasolineValid ? `${gasoline} km/l (G)` : ""
+    return [alcoholText, gasolineText].filter(Boolean).join(" / ")
+  }
+
+  const geraisItems: SpecItem[] = [
+    { label: "Motorização", value: version.engine },
     {
-      label: "Potencia (cv)",
+      label: "Potência (cv)",
       value: (() => {
         if (isValidValue(version.potencia_texto)) return version.potencia_texto
 
@@ -174,11 +250,17 @@ export default async function Page({
       })(),
     },
     {
-      label: "Peso (kg)",
-      value: pickFirst(version, ["peso_kg", "weight_kg"]),
+      label: "Aceleração",
+      value: pickFirst(version, ["aceleracao_0_100_s", "zero_to_hundred_s"]),
+      suffix: "s",
     },
     {
-      label: "Peso por potencia (kg/cv)",
+      label: "Velocidade máxima",
+      value: pickFirst(version, ["velocidade_maxima_kmh", "top_speed_kmh"]),
+      suffix: "km/h",
+    },
+    {
+      label: "Peso por potência (kg/cv)",
       value: (() => {
         const alc = pickFirst(version, ["peso_potencia_alcool_kgcv"])
         const gas = pickFirst(version, ["peso_potencia_gasolina_kgcv"])
@@ -192,26 +274,49 @@ export default async function Page({
         return pickFirst(version, ["peso_potencia_kgcv", "weight_to_power_kgcv"])
       })(),
     },
+  ].filter((item) => isValidValue(item.value))
+
+  const consumoItems: SpecItem[] = [
     {
-      label: "Aceleracao",
-      value: pickFirst(version, ["aceleracao_0_100_s", "zero_to_hundred_s"]),
-      suffix: "s",
+      label: "Consumo urbano (km/l)",
+      value: formatFuelConsumption(
+        pickFirst(version, ["consumo_etanol_urbano_kml"]),
+        pickFirst(version, ["consumo_gasolina_urbano_kml"])
+      ),
     },
     {
-      label: "Velocidade maxima",
-      value: pickFirst(version, ["velocidade_maxima_kmh", "top_speed_kmh"]),
-      suffix: "km/h",
+      label: "Consumo estrada (km/l)",
+      value: formatFuelConsumption(
+        pickFirst(version, ["consumo_etanol_estrada_kml"]),
+        pickFirst(version, ["consumo_gasolina_estrada_kml"])
+      ),
     },
   ].filter((item) => isValidValue(item.value))
 
-  const { data: defectsRaw } = await supabase
-    .from("defects")
-    .select("*")
-    .eq("vehicle_version_id", version.id)
+  const dimensoesItems: SpecItem[] = [
+    {
+      label: "Peso (kg)",
+      value: pickFirst(version, ["peso_kg", "weight_kg"]),
+    },
+  ].filter((item) => isValidValue(item.value))
 
-  const defects = (defectsRaw as DefectRow[] | null) ?? []
-  const defeitosCronicos = defects.filter((defect) => defect.severity >= 2)
-  const problemasPontuais = defects.filter((defect) => defect.severity < 2)
+  const notasItems: SpecItem[] = [
+    {
+      label: "Latin NCAP (até 2021)",
+      value: pickFirst(version, ["latin_ncap_pre_2021"]),
+    },
+    {
+      label: "Latin NCAP (a partir de 2021)",
+      value: pickFirst(version, ["latin_ncap_post_2021"]),
+    },
+  ].filter((item) => isValidValue(item.value))
+
+  const specGroups = [
+    { title: "Gerais", items: geraisItems },
+    { title: "Consumo", items: consumoItems },
+    { title: "Dimensões", items: dimensoesItems },
+    { title: "Notas", items: notasItems },
+  ].filter((group) => group.items.length > 0)
 
   return (
     <main className="bg-gradient-to-b from-white to-gray-50 min-h-screen pt-32">
@@ -229,17 +334,13 @@ export default async function Page({
           </Link>
         </div>
         <p className="text-gray-600 mb-4">{version.version_tier}</p>
-        <VersionRatingSection
-          vehicleVersionId={version.id}
-          vehicleId={version.vehicle_id}
-        />
       </section>
 
       <section className="max-w-7xl mx-auto px-8 pb-16">
         <div className="group relative w-full h-96 rounded-2xl overflow-hidden shadow-lg ring-1 ring-black/5">
           {imagePath ? (
             <Image
-              src={`${STORAGE_URL}${imagePath}`}
+              src={imageSrc}
               alt={modelName}
               fill
               quality={100}
@@ -252,20 +353,27 @@ export default async function Page({
         </div>
       </section>
 
-      {specItems.length ? (
+      {specGroups.length ? (
         <section className="max-w-7xl mx-auto px-8 pb-16">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="text-2xl font-semibold mb-1">Especificacoes da versao</h2>
+            <h2 className="text-2xl font-semibold mb-1">Especificações da versão</h2>
             <p className="text-sm text-gray-600 mb-5">
               {modelName} {version.version_name}
             </p>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {specItems.map((item) => (
-                <div key={item.label} className="rounded-lg border border-gray-200 px-4 py-3 bg-gray-50">
-                  <p className="text-xs text-gray-500 mb-1">{item.label}</p>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {String(item.value)}{item.suffix ? ` ${item.suffix}` : ""}
-                  </p>
+            <div className="space-y-6">
+              {specGroups.map((group) => (
+                <div key={group.title}>
+                  <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {group.items.map((item) => (
+                      <div key={`${group.title}-${item.label}`} className="rounded-lg border border-gray-200 px-4 py-3 bg-gray-50">
+                        <p className="text-xs text-gray-500 mb-1">{item.label}</p>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {String(item.value)}{item.suffix ? ` ${item.suffix}` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -273,21 +381,20 @@ export default async function Page({
         </section>
       ) : null}
 
+      <section className="max-w-7xl mx-auto px-8 pb-12">
+        <VersionRatingSection
+          vehicleVersionId={version.id}
+          vehicleId={version.vehicle_id}
+        />
+      </section>
+
       <section className="max-w-7xl mx-auto px-8 pb-32 grid lg:grid-cols-[1.2fr_0.8fr] gap-12">
         <div>
           <h2 className="text-2xl font-semibold mb-6">Defeitos Cronicos</h2>
-          <ul className="space-y-3 text-gray-700">
-            {defeitosCronicos.map((item) => (
-              <li key={item.id}>- {item.title}</li>
-            ))}
-          </ul>
+          <DefectPointsSection vehicleVersionId={version.id} mode="chronic" />
 
           <h2 className="text-2xl font-semibold mt-12 mb-6">Problemas Pontuais</h2>
-          <ul className="space-y-3 text-gray-700">
-            {problemasPontuais.map((item) => (
-              <li key={item.id}>- {item.title}</li>
-            ))}
-          </ul>
+          <DefectPointsSection vehicleVersionId={version.id} mode="pontual" />
 
           <h2 className="text-2xl font-semibold mt-12 mb-6">Pontos Positivos</h2>
           <PositivePointsSection vehicleVersionId={version.id} />
@@ -295,9 +402,13 @@ export default async function Page({
 
         <div>
           <h2 className="text-2xl font-semibold mb-6">Comentarios</h2>
-          <CommentDiscussionSection vehicleVersionId={version.id} />
+          <CommentDiscussionSection
+            vehicleVersionId={version.id}
+            vehicleOwnerId={null}
+          />
         </div>
       </section>
     </main>
   )
 }
+

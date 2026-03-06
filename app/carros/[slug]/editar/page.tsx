@@ -40,6 +40,7 @@ type VersionVehicle = {
 type EditableVersionRow = {
   id: string
   vehicle_id: string
+  image_url?: string | null
   year: number | null
   engine: string | null
   transmission: string | null
@@ -53,8 +54,15 @@ type EditableVersionRow = {
   torque_alcool_kgfm?: number | null
   torque_gasolina_kgfm?: number | null
   torque_rpm?: number | null
+  consumo_gasolina_urbano_kml?: number | null
+  consumo_gasolina_estrada_kml?: number | null
+  consumo_etanol_urbano_kml?: number | null
+  consumo_etanol_estrada_kml?: number | null
+  latin_ncap_pre_2021?: string | null
+  latin_ncap_post_2021?: string | null
   peso_kg: number | null
   peso_potencia_kgcv: number | null
+  aceleracao_texto?: string | null
   aceleracao_0_100_s: number | null
   velocidade_maxima_kmh: number | null
   version_name: string | null
@@ -116,16 +124,20 @@ export default function Page() {
   const [year, setYear] = useState("")
   const [engine, setEngine] = useState("")
   const [transmission, setTransmission] = useState("")
-  const [powerCv, setPowerCv] = useState("")
   const [powerText, setPowerText] = useState("")
   const [powerAlcoholCv, setPowerAlcoholCv] = useState("")
   const [powerGasolineCv, setPowerGasolineCv] = useState("")
   const [powerRpm, setPowerRpm] = useState("")
-  const [torqueKgfm, setTorqueKgfm] = useState("")
   const [torqueText, setTorqueText] = useState("")
   const [torqueAlcoholKgfm, setTorqueAlcoholKgfm] = useState("")
   const [torqueGasolineKgfm, setTorqueGasolineKgfm] = useState("")
   const [torqueRpm, setTorqueRpm] = useState("")
+  const [consumptionGasCity, setConsumptionGasCity] = useState("")
+  const [consumptionGasHighway, setConsumptionGasHighway] = useState("")
+  const [consumptionAlcoholCity, setConsumptionAlcoholCity] = useState("")
+  const [consumptionAlcoholHighway, setConsumptionAlcoholHighway] = useState("")
+  const [latinNcapPre2021, setLatinNcapPre2021] = useState("")
+  const [latinNcapPost2021, setLatinNcapPost2021] = useState("")
   const [weightKg, setWeightKg] = useState("")
   const [acceleration0100, setAcceleration0100] = useState("")
   const [maxSpeedKmh, setMaxSpeedKmh] = useState("")
@@ -199,6 +211,7 @@ export default function Page() {
       const fullSelect = `
           id,
           vehicle_id,
+          image_url,
           year,
           engine,
           transmission,
@@ -212,8 +225,15 @@ export default function Page() {
           torque_alcool_kgfm,
           torque_gasolina_kgfm,
           torque_rpm,
+          consumo_gasolina_urbano_kml,
+          consumo_gasolina_estrada_kml,
+          consumo_etanol_urbano_kml,
+          consumo_etanol_estrada_kml,
+          latin_ncap_pre_2021,
+          latin_ncap_post_2021,
           peso_kg,
           peso_potencia_kgcv,
+          aceleracao_texto,
           aceleracao_0_100_s,
           velocidade_maxima_kmh,
           version_name,
@@ -269,7 +289,7 @@ export default function Page() {
       }
 
       if (error || !version) {
-        setErrorMessage(`Nao foi possivel carregar os dados para edicao: ${error?.message ?? "erro desconhecido"}`)
+        setErrorMessage(`Não foi possível carregar os dados para edição: ${error?.message ?? "erro desconhecido"}`)
         setLoadingData(false)
         return
       }
@@ -288,21 +308,36 @@ export default function Page() {
       setYear(String(typedVersion.year ?? ""))
       setEngine(typedVersion.engine ?? "")
       setTransmission(typedVersion.transmission ?? "")
-      setPowerCv(typedVersion.potencia_cv != null ? String(typedVersion.potencia_cv) : "")
       setPowerText(typedVersion.potencia_texto ?? "")
       setPowerAlcoholCv(typedVersion.potencia_alcool_cv != null ? String(typedVersion.potencia_alcool_cv) : "")
       setPowerGasolineCv(typedVersion.potencia_gasolina_cv != null ? String(typedVersion.potencia_gasolina_cv) : "")
       setPowerRpm(typedVersion.potencia_rpm != null ? String(typedVersion.potencia_rpm) : "")
-      setTorqueKgfm(typedVersion.torque_kgfm != null ? String(typedVersion.torque_kgfm) : "")
       setTorqueText(typedVersion.torque_texto ?? "")
       setTorqueAlcoholKgfm(typedVersion.torque_alcool_kgfm != null ? String(typedVersion.torque_alcool_kgfm) : "")
       setTorqueGasolineKgfm(typedVersion.torque_gasolina_kgfm != null ? String(typedVersion.torque_gasolina_kgfm) : "")
       setTorqueRpm(typedVersion.torque_rpm != null ? String(typedVersion.torque_rpm) : "")
+      setConsumptionGasCity(
+        typedVersion.consumo_gasolina_urbano_kml != null ? String(typedVersion.consumo_gasolina_urbano_kml) : ""
+      )
+      setConsumptionGasHighway(
+        typedVersion.consumo_gasolina_estrada_kml != null ? String(typedVersion.consumo_gasolina_estrada_kml) : ""
+      )
+      setConsumptionAlcoholCity(
+        typedVersion.consumo_etanol_urbano_kml != null ? String(typedVersion.consumo_etanol_urbano_kml) : ""
+      )
+      setConsumptionAlcoholHighway(
+        typedVersion.consumo_etanol_estrada_kml != null ? String(typedVersion.consumo_etanol_estrada_kml) : ""
+      )
+      setLatinNcapPre2021(typedVersion.latin_ncap_pre_2021 ?? "")
+      setLatinNcapPost2021(typedVersion.latin_ncap_post_2021 ?? "")
       setWeightKg(typedVersion.peso_kg != null ? String(typedVersion.peso_kg) : "")
-      setAcceleration0100(typedVersion.aceleracao_0_100_s != null ? String(typedVersion.aceleracao_0_100_s) : "")
+      setAcceleration0100(
+        typedVersion.aceleracao_texto ??
+          (typedVersion.aceleracao_0_100_s != null ? String(typedVersion.aceleracao_0_100_s) : "")
+      )
       setMaxSpeedKmh(typedVersion.velocidade_maxima_kmh != null ? String(typedVersion.velocidade_maxima_kmh) : "")
 
-      const currentImagePath = vehicleData?.image_url ?? null
+      const currentImagePath = typedVersion.image_url ?? vehicleData?.image_url ?? null
       setExistingImagePath(currentImagePath)
       if (currentImagePath) {
         setImagePreview(`${STORAGE_URL}${currentImagePath}`)
@@ -317,7 +352,7 @@ export default function Page() {
         .eq("vehicle_version_id", typedVersion.id)
 
       if (defectsError) {
-        setErrorMessage("A coluna created_by em defects e obrigatoria para editar por autoria.")
+        setErrorMessage("A coluna created_by em defects é obrigatória para editar por autoria.")
         setLoadingData(false)
         return
       }
@@ -328,7 +363,7 @@ export default function Page() {
         .eq("vehicle_version_id", typedVersion.id)
 
       if (positivesError) {
-        setErrorMessage("A coluna created_by em positives e obrigatoria para editar por autoria.")
+        setErrorMessage("A coluna created_by em positives é obrigatória para editar por autoria.")
         setLoadingData(false)
         return
       }
@@ -486,11 +521,11 @@ export default function Page() {
     try {
       const userId = session?.user?.id
       if (!userId) {
-        throw new Error("Sessao invalida.")
+        throw new Error("Sessão inválida.")
       }
 
       if (!selectedBrand) {
-        throw new Error("Selecione uma marca valida.")
+        throw new Error("Selecione uma marca válida.")
       }
 
       if (!name || !versionName || !year || !engine || !transmission) {
@@ -498,14 +533,20 @@ export default function Page() {
       }
 
       const uploadedImagePath = await uploadImageIfNeeded()
-      const potenciaCv = parseOptionalNumber(powerCv)
       const potenciaAlcool = parseOptionalNumber(powerAlcoholCv)
       const potenciaGasolina = parseOptionalNumber(powerGasolineCv)
+      const potenciaCv = potenciaAlcool ?? potenciaGasolina ?? null
       const potenciaRpm = parseOptionalNumber(powerRpm)
-      const torque = parseOptionalNumber(torqueKgfm)
       const torqueAlcool = parseOptionalNumber(torqueAlcoholKgfm)
       const torqueGasolina = parseOptionalNumber(torqueGasolineKgfm)
+      const torque = torqueAlcool ?? torqueGasolina ?? null
       const torqueRefRpm = parseOptionalNumber(torqueRpm)
+      const consumoGasolinaUrbano = parseOptionalNumber(consumptionGasCity)
+      const consumoGasolinaEstrada = parseOptionalNumber(consumptionGasHighway)
+      const consumoEtanolUrbano = parseOptionalNumber(consumptionAlcoholCity)
+      const consumoEtanolEstrada = parseOptionalNumber(consumptionAlcoholHighway)
+      const latinNcapAte2021 = latinNcapPre2021.trim() || null
+      const latinNcapPos2021 = latinNcapPost2021.trim() || null
       const pesoKg = parseOptionalNumber(weightKg)
       const pesoPotenciaAlcool =
         potenciaAlcool && pesoKg
@@ -516,15 +557,19 @@ export default function Page() {
           ? Number((pesoKg / potenciaGasolina).toFixed(2))
           : null
       const pesoPotencia =
-        potenciaCv && pesoKg
-          ? Number((pesoKg / potenciaCv).toFixed(2))
-          : null
+        pesoPotenciaAlcool && !pesoPotenciaGasolina
+          ? pesoPotenciaAlcool
+          : (!pesoPotenciaAlcool && pesoPotenciaGasolina ? pesoPotenciaGasolina : null)
+      const aceleracaoTexto = acceleration0100.trim() || null
       const aceleracao = parseOptionalNumber(acceleration0100)
       const velocidadeMaxima = parseOptionalNumber(maxSpeedKmh)
 
       let nextImagePath: string | null = existingImagePath
       if (uploadedImagePath) nextImagePath = uploadedImagePath
       if (removeExistingImage && !uploadedImagePath) nextImagePath = null
+      if (!nextImagePath) {
+        throw new Error("A imagem do modelo é obrigatória.")
+      }
 
       const modelSlug = generateModelSlug(selectedBrand.name, name)
       const generatedVersionSlug = generateVersionSlug(
@@ -551,6 +596,7 @@ export default function Page() {
       }
 
       const fullVersionPayload = {
+        image_url: nextImagePath,
         year: Number(year),
         engine,
         transmission,
@@ -564,10 +610,17 @@ export default function Page() {
         torque_alcool_kgfm: torqueAlcool,
         torque_gasolina_kgfm: torqueGasolina,
         torque_rpm: torqueRefRpm,
+        consumo_gasolina_urbano_kml: consumoGasolinaUrbano,
+        consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
+        consumo_etanol_urbano_kml: consumoEtanolUrbano,
+        consumo_etanol_estrada_kml: consumoEtanolEstrada,
+        latin_ncap_pre_2021: latinNcapAte2021,
+        latin_ncap_post_2021: latinNcapPos2021,
         peso_kg: pesoKg,
         peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
         peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
         peso_potencia_kgcv: pesoPotencia,
+        aceleracao_texto: aceleracaoTexto,
         aceleracao_0_100_s: aceleracao,
         velocidade_maxima_kmh: velocidadeMaxima,
         version_name: versionName,
@@ -605,7 +658,7 @@ export default function Page() {
       }
 
       if (versionError) {
-        throw new Error("Falha ao atualizar a versao.")
+        throw new Error("Falha ao atualizar a versão.")
       }
 
       if (deletedDefectIds.length) {
@@ -697,8 +750,8 @@ export default function Page() {
       await syncDefects(pontualDefects, 1)
       await syncPositives(positivePoints)
 
-      setSuccessMessage("Edicao salva com sucesso.")
-      setTimeout(() => router.push(`/carros/${versionSlug}`), 700)
+      setSuccessMessage("Edição salva com sucesso.")
+      setTimeout(() => router.push(`/carros/${versionSlug}?v=${Date.now()}`), 700)
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : "Erro inesperado ao salvar.")
     } finally {
@@ -712,14 +765,14 @@ export default function Page() {
 
   return (
     <div className="min-h-screen max-w-3xl mx-auto px-10 pt-32 pb-10">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">Editar Veiculo</h1>
+      <h1 className="text-3xl font-bold mb-8 tracking-tight">Editar Veículo</h1>
 
       <form
         onSubmit={handleSubmit}
         className="space-y-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
       >
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          Se o item ja existir e for seu, ele sera atualizado. Se nao existir, ele sera criado como novo ao salvar.
+          Se o item já existir e for seu, ele será atualizado. Se não existir, ele será criado como novo ao salvar.
         </div>
 
         <select
@@ -747,7 +800,7 @@ export default function Page() {
 
         <input
           type="text"
-          placeholder="Nome da versao (ex: Highline, GTS, Track)"
+          placeholder="Nome da versão (ex: Highline, GTS, Track)"
           value={versionName}
           onChange={(e) => setVersionName(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -787,7 +840,7 @@ export default function Page() {
 
         <input
           type="text"
-          placeholder="Transmissao (ex: AT6)"
+          placeholder="Transmissão (ex: AT6)"
           value={transmission}
           onChange={(e) => setTransmission(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -795,23 +848,15 @@ export default function Page() {
         />
 
         <h3 className="text-lg font-semibold text-gray-900 mt-2">
-          Especificacoes da versao (opcional)
+          Especificações da versão (opcional)
         </h3>
         <p className="text-sm text-gray-500">
-          Voce pode preencher em texto completo ou em campos separados por combustivel + rpm.
+          Você pode preencher em texto completo ou em campos separados por combustível + rpm.
         </p>
 
         <input
           type="text"
-          placeholder="Potencia de referencia (cv) - usada para calcular peso/potencia"
-          value={powerCv}
-          onChange={(e) => setPowerCv(e.target.value)}
-          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-        />
-
-        <input
-          type="text"
-          placeholder="Potencia (texto completo) - ex: 116 cv (E) / 109 cv (G) a 5.000 rpm"
+          placeholder="Potência (texto completo) - ex: 116 cv (E) / 109 cv (G) a 5.000 rpm"
           value={powerText}
           onChange={(e) => setPowerText(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -820,34 +865,26 @@ export default function Page() {
         <div className="grid sm:grid-cols-3 gap-3">
           <input
             type="text"
-            placeholder="Potencia E (cv)"
+            placeholder="Potência E (cv)"
             value={powerAlcoholCv}
             onChange={(e) => setPowerAlcoholCv(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
           <input
             type="text"
-            placeholder="Potencia G (cv)"
+            placeholder="Potência G (cv)"
             value={powerGasolineCv}
             onChange={(e) => setPowerGasolineCv(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
           <input
             type="text"
-            placeholder="Potencia rpm"
+            placeholder="Potência rpm"
             value={powerRpm}
             onChange={(e) => setPowerRpm(e.target.value)}
             className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           />
         </div>
-
-        <input
-          type="text"
-          placeholder="Torque de referencia (kgfm) - ex: 16.8"
-          value={torqueKgfm}
-          onChange={(e) => setTorqueKgfm(e.target.value)}
-          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-        />
 
         <input
           type="text"
@@ -881,6 +918,40 @@ export default function Page() {
           />
         </div>
 
+        <h4 className="text-base font-semibold text-gray-900 mt-1">
+          Consumo (km/l)
+        </h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Gasolina urbano (km/l)"
+            value={consumptionGasCity}
+            onChange={(e) => setConsumptionGasCity(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Gasolina estrada (km/l)"
+            value={consumptionGasHighway}
+            onChange={(e) => setConsumptionGasHighway(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Etanol urbano (km/l)"
+            value={consumptionAlcoholCity}
+            onChange={(e) => setConsumptionAlcoholCity(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Etanol estrada (km/l)"
+            value={consumptionAlcoholHighway}
+            onChange={(e) => setConsumptionAlcoholHighway(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
+
         <input
           type="text"
           placeholder="Peso (kg) - ex: 1168"
@@ -891,7 +962,7 @@ export default function Page() {
 
         <input
           type="text"
-          placeholder="Aceleracao 0-100 (s) - ex: 10.3"
+          placeholder="Aceleração 0-100 (texto completo) - ex: 10,3 s (E) / 10,8 s (G)"
           value={acceleration0100}
           onChange={(e) => setAcceleration0100(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
@@ -899,11 +970,28 @@ export default function Page() {
 
         <input
           type="text"
-          placeholder="Velocidade maxima (km/h) - ex: 190"
+          placeholder="Velocidade máxima (km/h) - ex: 190"
           value={maxSpeedKmh}
           onChange={(e) => setMaxSpeedKmh(e.target.value)}
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
         />
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Latin NCAP (até 2021) - ex: 5 estrelas"
+            value={latinNcapPre2021}
+            onChange={(e) => setLatinNcapPre2021(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Latin NCAP (a partir de 2021) - ex: 3 estrelas"
+            value={latinNcapPost2021}
+            onChange={(e) => setLatinNcapPost2021(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
 
         <div className="space-y-3">
           <label className="block text-sm font-medium text-gray-700">
@@ -920,10 +1008,10 @@ export default function Page() {
 
           {imagePreview ? (
             <div className="border rounded-lg p-3 w-fit bg-white shadow-sm">
-              <p className="text-xs text-gray-500 mb-2">Previa</p>
+              <p className="text-xs text-gray-500 mb-2">Prévia</p>
               <Image
                 src={imagePreview}
-                alt="Previa da imagem selecionada"
+                alt="Prévia da imagem selecionada"
                 width={256}
                 height={160}
                 unoptimized
@@ -941,10 +1029,10 @@ export default function Page() {
         </div>
 
         <div className="space-y-3">
-          <label className="block text-sm font-medium text-gray-700">Defeitos cronicos</label>
+          <label className="block text-sm font-medium text-gray-700">Defeitos crônicos</label>
           {hasOnlyNewChronic ? (
             <p className="text-xs text-gray-500">
-              Nenhum defeito cronico existente para voce. O que preencher abaixo sera inserido como novo.
+              Nenhum defeito crônico existente para você. O que preencher abaixo será inserido como novo.
             </p>
           ) : null}
           {chronicDefects.map((item, index) => (
@@ -970,10 +1058,10 @@ export default function Page() {
                 <p className="text-xs text-gray-500">Somente o autor deste registro pode editar.</p>
               ) : null}
               {item.owned && item.id ? (
-                <p className="text-xs text-green-700">Este registro sera atualizado ao salvar.</p>
+                <p className="text-xs text-green-700">Este registro será atualizado ao salvar.</p>
               ) : null}
               {item.owned && !item.id ? (
-                <p className="text-xs text-blue-700">Este registro sera criado como novo ao salvar.</p>
+                <p className="text-xs text-blue-700">Este registro será criado como novo ao salvar.</p>
               ) : null}
             </div>
           ))}
@@ -982,7 +1070,7 @@ export default function Page() {
             onClick={() => addEditableItem(setChronicDefects)}
             className="text-sm text-gray-700 hover:text-black transition-colors duration-200 cursor-pointer"
           >
-            + Adicionar defeito cronico
+            + Adicionar defeito crônico
           </button>
         </div>
 
@@ -990,7 +1078,7 @@ export default function Page() {
           <label className="block text-sm font-medium text-gray-700">Defeitos pontuais</label>
           {hasOnlyNewPontual ? (
             <p className="text-xs text-gray-500">
-              Nenhum defeito pontual existente para voce. O que preencher abaixo sera inserido como novo.
+              Nenhum defeito pontual existente para você. O que preencher abaixo será inserido como novo.
             </p>
           ) : null}
           {pontualDefects.map((item, index) => (
@@ -1016,10 +1104,10 @@ export default function Page() {
                 <p className="text-xs text-gray-500">Somente o autor deste registro pode editar.</p>
               ) : null}
               {item.owned && item.id ? (
-                <p className="text-xs text-green-700">Este registro sera atualizado ao salvar.</p>
+                <p className="text-xs text-green-700">Este registro será atualizado ao salvar.</p>
               ) : null}
               {item.owned && !item.id ? (
-                <p className="text-xs text-blue-700">Este registro sera criado como novo ao salvar.</p>
+                <p className="text-xs text-blue-700">Este registro será criado como novo ao salvar.</p>
               ) : null}
             </div>
           ))}
@@ -1036,7 +1124,7 @@ export default function Page() {
           <label className="block text-sm font-medium text-gray-700">Pontos positivos</label>
           {hasOnlyNewPositives ? (
             <p className="text-xs text-gray-500">
-              Nenhum ponto positivo existente para voce. O que preencher abaixo sera inserido como novo.
+              Nenhum ponto positivo existente para você. O que preencher abaixo será inserido como novo.
             </p>
           ) : null}
           {positivePoints.map((item, index) => (
@@ -1062,10 +1150,10 @@ export default function Page() {
                 <p className="text-xs text-gray-500">Somente o autor deste registro pode editar.</p>
               ) : null}
               {item.owned && item.id ? (
-                <p className="text-xs text-green-700">Este registro sera atualizado ao salvar.</p>
+                <p className="text-xs text-green-700">Este registro será atualizado ao salvar.</p>
               ) : null}
               {item.owned && !item.id ? (
-                <p className="text-xs text-blue-700">Este registro sera criado como novo ao salvar.</p>
+                <p className="text-xs text-blue-700">Este registro será criado como novo ao salvar.</p>
               ) : null}
             </div>
           ))}
@@ -1087,7 +1175,7 @@ export default function Page() {
             disabled={loading}
             className="bg-black text-white px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {loading ? "Salvando..." : "Salvar alteracoes"}
+            {loading ? "Salvando..." : "Salvar alterações"}
           </button>
 
           <button
@@ -1102,4 +1190,5 @@ export default function Page() {
     </div>
   )
 }
+
 

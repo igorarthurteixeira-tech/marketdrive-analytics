@@ -181,8 +181,9 @@ export default function VersionRatingSection({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-      <div>
+    <div className="rounded-xl border border-gray-200 bg-white p-4 md:p-5">
+      <div className="grid gap-4 md:grid-cols-3 md:items-start">
+        <div>
         <p className="text-sm font-semibold text-gray-900">Avaliação desta versão</p>
         <div className="mt-1">
           <StarRating rating={displayVersionRating} showValue={versionRatingCount > 0} />
@@ -194,7 +195,7 @@ export default function VersionRatingSection({
         </p>
       </div>
 
-      <div>
+        <div>
         <p className="text-sm font-semibold text-gray-900">Média geral do veículo (todas as versões)</p>
         <div className="mt-1">
           <StarRating rating={displayModelRating} showValue={modelRatingCount > 0} />
@@ -206,7 +207,7 @@ export default function VersionRatingSection({
         </p>
       </div>
 
-      <div>
+        <div>
         <p className="text-sm font-semibold text-gray-900 mb-2">Sua avaliação</p>
         <div className="flex items-center gap-1">
           {Array.from({ length: 5 }).map((_, index) => {
@@ -232,6 +233,7 @@ export default function VersionRatingSection({
         <p className="text-xs text-gray-500 mt-1">
           {userRating ? `Você avaliou com ${userRating} estrela${userRating > 1 ? "s" : ""}.` : "Clique nas estrelas para avaliar."}
         </p>
+        </div>
       </div>
 
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
