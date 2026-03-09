@@ -9,6 +9,7 @@ export default function RegisterPage() {
   const router = useRouter()
 
   const [name, setName] = useState("")
+  const [username, setUsername] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
@@ -25,6 +26,7 @@ export default function RegisterPage() {
       options: {
         data: {
           name: name,
+          username: username,
         },
         emailRedirectTo:
           process.env.NEXT_PUBLIC_SITE_URL + "/login",
@@ -60,6 +62,15 @@ export default function RegisterPage() {
           placeholder="Seu nome"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          className="w-full border p-3 rounded"
+          required
+        />
+
+        <input
+          type="text"
+          placeholder="Seu username (ex: igorcars)"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
           className="w-full border p-3 rounded"
           required
         />

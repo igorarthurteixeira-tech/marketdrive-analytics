@@ -31,6 +31,7 @@ type VoteStats = {
 type ProfileRow = {
   id: string
   name: string | null
+  username?: string | null
 }
 
 type QuotedPoint = {
@@ -98,6 +99,7 @@ export default function CommentDiscussionSection({
 
   const [comments, setComments] = useState<CommentRow[]>([])
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({})
+  const [authorMentions, setAuthorMentions] = useState<Record<string, string>>({})
   const [stats, setStats] = useState<Record<string, VoteStats>>({})
   const [newComment, setNewComment] = useState("")
   const [quotedPoint, setQuotedPoint] = useState<QuotedPoint | null>(null)
@@ -205,16 +207,21 @@ export default function CommentDiscussionSection({
     if (authorIds.length) {
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id,name")
+        .select("id,name,username")
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
+      const mappedMentions: Record<string, string> = {}
       for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
+        const username = row.username?.trim()
+        mappedMentions[row.id] = username ? username : row.name ?? "autor"
       }
       setAuthorNames(mappedNames)
+      setAuthorMentions(mappedMentions)
     } else {
       setAuthorNames({})
+      setAuthorMentions({})
     }
 
     const commentIds = mappedComments.map((item) => item.id)
@@ -496,11 +503,11 @@ export default function CommentDiscussionSection({
         commentStats,
         authorName: comment.created_by ? authorNames[comment.created_by] ?? "Autor" : "Autor",
         replyToAuthorName: comment.reply_to_user_id
-          ? authorNames[comment.reply_to_user_id] ?? "Autor"
+          ? authorMentions[comment.reply_to_user_id] ?? "autor"
           : null,
       } satisfies CommentCard
     })
-  }, [comments, stats, authorNames])
+  }, [comments, stats, authorNames, authorMentions])
 
   const { rootCards, repliesByRootId } = useMemo(() => {
     const cardById = new Map(cards.map((card) => [card.comment.id, card]))

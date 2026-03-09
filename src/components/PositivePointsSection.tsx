@@ -26,6 +26,7 @@ type VoteStats = {
 type ProfileRow = {
   id: string
   name: string | null
+  username?: string | null
 }
 
 export default function PositivePointsSection({
@@ -37,6 +38,7 @@ export default function PositivePointsSection({
 
   const [points, setPoints] = useState<PositivePoint[]>([])
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({})
+  const [authorMentions, setAuthorMentions] = useState<Record<string, string>>({})
   const [stats, setStats] = useState<Record<string, VoteStats>>({})
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
@@ -79,16 +81,21 @@ export default function PositivePointsSection({
     if (authorIds.length) {
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id,name")
+        .select("id,name,username")
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
+      const mappedMentions: Record<string, string> = {}
       for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
+        const username = row.username?.trim()
+        mappedMentions[row.id] = username ? `@${username}` : row.name ?? "Autor"
       }
       setAuthorNames(mappedNames)
+      setAuthorMentions(mappedMentions)
     } else {
       setAuthorNames({})
+      setAuthorMentions({})
     }
 
     const pointIds = pointsData.map((item) => item.id)
@@ -187,9 +194,10 @@ export default function PositivePointsSection({
         confirmedPct,
         deniedPct,
         authorName: point.created_by ? authorNames[point.created_by] ?? "Autor" : "Autor",
+        authorMention: point.created_by ? authorMentions[point.created_by] ?? "Autor" : "Autor",
       }
     })
-  }, [points, stats, authorNames])
+  }, [points, stats, authorNames, authorMentions])
 
   if (loading) {
     return <p className="text-gray-500">Carregando pontos positivos...</p>
@@ -203,7 +211,7 @@ export default function PositivePointsSection({
         <p className="text-gray-600">Nenhum ponto positivo cadastrado para esta versao.</p>
       ) : null}
 
-      {cards.map(({ point, pointStats, total, confirmedPct, deniedPct, authorName }) => (
+      {cards.map(({ point, pointStats, total, confirmedPct, deniedPct, authorName, authorMention }) => (
         <article
           id={`positive-point-${point.id}`}
           key={point.id}
@@ -255,7 +263,7 @@ export default function PositivePointsSection({
 
             <button
               type="button"
-              onClick={() => quoteInComments(point.id, point.description, authorName)}
+              onClick={() => quoteInComments(point.id, point.description, authorMention)}
               className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition-colors cursor-pointer"
             >
               Citar nos comentarios

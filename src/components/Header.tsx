@@ -19,6 +19,7 @@ const SECTION_SHORTCUTS: Record<string, { id: string; label: string }[]> = {
 export default function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [profileName, setProfileName] = useState<string | null>(null)
+  const [profileAvatar, setProfileAvatar] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -94,20 +95,36 @@ export default function Header() {
 
   // Buscar nome do perfil
   useEffect(() => {
-    const fetchProfile = async () => {
+      const fetchProfile = async () => {
       if (!user) {
         setProfileName(null)
+        setProfileAvatar(null)
         return
       }
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("name")
+        .select("name,avatar_url")
         .eq("id", user.id)
         .single()
 
+      if (error && /column|schema cache/i.test(error.message ?? "")) {
+        const fallback = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("id", user.id)
+          .single()
+
+        if (!fallback.error && fallback.data) {
+          setProfileName(fallback.data.name)
+          setProfileAvatar(null)
+        }
+        return
+      }
+
       if (!error && data) {
         setProfileName(data.name)
+        setProfileAvatar(data.avatar_url ?? null)
       }
     }
 
@@ -207,9 +224,30 @@ export default function Header() {
               }`}
             >
               {user ? (
-                <p className="px-3 py-2 text-sm text-gray-600 border-b border-gray-200">
-                  {greeting}, {profileName ?? user.email}
-                </p>
+                <Link
+                  href="/perfil"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <span className="h-8 w-8 rounded-full border border-gray-300 bg-gray-100 overflow-hidden flex items-center justify-center">
+                    {profileAvatar ? (
+                      <Image
+                        src={profileAvatar}
+                        alt="Foto de perfil"
+                        width={32}
+                        height={32}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-xs font-semibold text-gray-500">
+                        {(profileName ?? user.email ?? "U").charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    {greeting}, {profileName ?? user.email}
+                  </span>
+                </Link>
               ) : null}
 
               <Link
