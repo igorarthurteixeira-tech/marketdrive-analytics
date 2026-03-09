@@ -17,6 +17,7 @@ const STORAGE_URL =
 type VersionDetail = {
   id: string
   vehicle_id: string
+  created_by?: string | null
   image_url?: string | null
   year: number | null
   engine: string | null
@@ -78,6 +79,7 @@ export default async function Page({
   const fullSelect = `
       id,
       vehicle_id,
+      created_by,
       image_url,
       year,
       engine,
@@ -403,8 +405,9 @@ export default async function Page({
         <div>
           <h2 className="text-2xl font-semibold mb-6">Comentarios</h2>
           <CommentDiscussionSection
+            key={version.id}
             vehicleVersionId={version.id}
-            vehicleOwnerId={null}
+            vehicleOwnerId={version.created_by ?? null}
           />
         </div>
       </section>

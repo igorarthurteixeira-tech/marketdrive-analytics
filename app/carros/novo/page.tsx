@@ -343,6 +343,7 @@ export default function NovoCarro() {
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicle.id,
+            created_by: session?.user?.id ?? null,
             image_url: imagePath,
             year: Number(year),
             engine,
@@ -435,6 +436,7 @@ export default function NovoCarro() {
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicleId,
+            created_by: session?.user?.id ?? null,
             year: Number(year),
             engine,
             transmission,

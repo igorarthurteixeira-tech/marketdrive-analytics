@@ -49,6 +49,12 @@ type CommentCard = {
 type CommentSortMode = "visibility" | "recency"
 const REPLIES_PAGE_SIZE = 16
 
+const getInitialSortMode = (vehicleVersionId: string): CommentSortMode => {
+  if (typeof window === "undefined") return "visibility"
+  const saved = window.localStorage.getItem(`comment-sort:${vehicleVersionId}`)
+  return saved === "recency" || saved === "visibility" ? saved : "visibility"
+}
+
 const QUOTE_PREFIX = "[[QUOTE|"
 
 const serializeQuote = (quote: QuotedPoint) =>
@@ -105,7 +111,9 @@ export default function CommentDiscussionSection({
   const [pinEnabled, setPinEnabled] = useState(true)
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>({})
   const [visibleRepliesByThread, setVisibleRepliesByThread] = useState<Record<string, number>>({})
-  const [sortMode, setSortMode] = useState<CommentSortMode>("visibility")
+  const [sortMode, setSortMode] = useState<CommentSortMode>(() =>
+    getInitialSortMode(vehicleVersionId)
+  )
   const [errorMessage, setErrorMessage] = useState("")
 
   const canInteract = Boolean(session?.user?.id)
@@ -273,14 +281,6 @@ export default function CommentDiscussionSection({
     window.addEventListener("quote-positive-point", handler as EventListener)
     return () => window.removeEventListener("quote-positive-point", handler as EventListener)
   }, [])
-
-  useEffect(() => {
-    const storageKey = `comment-sort:${vehicleVersionId}`
-    const saved = window.localStorage.getItem(storageKey)
-    if (saved === "visibility" || saved === "recency") {
-      setSortMode(saved)
-    }
-  }, [vehicleVersionId])
 
   useEffect(() => {
     const storageKey = `comment-sort:${vehicleVersionId}`
