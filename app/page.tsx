@@ -70,6 +70,12 @@ export default async function Home() {
               Analisar modelos
             </Link>
             <Link
+              href="/feed"
+              className="border border-white/80 px-6 py-3 rounded-lg hover:bg-white hover:text-black transition"
+            >
+              Feed
+            </Link>
+            <Link
               href="/assinatura"
               className="border border-white/80 px-6 py-3 rounded-lg hover:bg-white hover:text-black transition"
             >

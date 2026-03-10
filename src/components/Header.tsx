@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { Bell, Menu, X } from "lucide-react"
+import { Bell, Menu, Newspaper, SquarePen, X } from "lucide-react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
@@ -1356,6 +1356,35 @@ export default function Header() {
               ))}
             </div>
           )}
+
+          <div className="hidden lg:flex items-center gap-2">
+            <div className="relative group">
+              <Link
+                href="/feed"
+                aria-label="Abrir feed"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-2.5 py-2 text-gray-700 hover:text-black hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
+              >
+                <Newspaper size={14} />
+              </Link>
+              <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-md transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 whitespace-nowrap">
+                Feed
+              </span>
+            </div>
+            {user ? (
+              <div className="relative group">
+                <Link
+                  href="/postagens/nova"
+                  aria-label="Criar nova postagem"
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-2.5 py-2 text-gray-700 hover:text-black hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
+                >
+                  <SquarePen size={14} />
+                </Link>
+                <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-md transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 whitespace-nowrap">
+                  Nova postagem
+                </span>
+              </div>
+            ) : null}
+          </div>
 
           {user ? (
             <div ref={notificationsRef} className="relative">

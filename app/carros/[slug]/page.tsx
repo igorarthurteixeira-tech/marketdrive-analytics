@@ -418,21 +418,21 @@ export default async function Page({
 
       <section className="max-w-7xl mx-auto px-8 pb-32 grid lg:grid-cols-[1.2fr_0.8fr] gap-12">
         <div>
-          <h2 className="text-2xl font-semibold mb-6">Defeitos Cronicos</h2>
+          <h2 id="defeitos-cronicos" className="text-2xl font-semibold mb-6 scroll-mt-24">Defeitos Cronicos</h2>
           <DefectPointsSection
             vehicleVersionId={version.id}
             mode="chronic"
             vehicleOwnerId={version.created_by ?? null}
           />
 
-          <h2 className="text-2xl font-semibold mt-12 mb-6">Problemas Pontuais</h2>
+          <h2 id="defeitos-pontuais" className="text-2xl font-semibold mt-12 mb-6 scroll-mt-24">Problemas Pontuais</h2>
           <DefectPointsSection
             vehicleVersionId={version.id}
             mode="pontual"
             vehicleOwnerId={version.created_by ?? null}
           />
 
-          <h2 className="text-2xl font-semibold mt-12 mb-6">Pontos Positivos</h2>
+          <h2 id="positivos" className="text-2xl font-semibold mt-12 mb-6 scroll-mt-24">Pontos Positivos</h2>
           <PositivePointsSection
             vehicleVersionId={version.id}
             vehicleOwnerId={version.created_by ?? null}
@@ -440,7 +440,7 @@ export default async function Page({
         </div>
 
         <div>
-          <h2 className="text-2xl font-semibold mb-6">Comentarios</h2>
+          <h2 id="comentarios" className="text-2xl font-semibold mb-6 scroll-mt-24">Comentarios</h2>
           <CommentDiscussionSection
             key={version.id}
             vehicleVersionId={version.id}

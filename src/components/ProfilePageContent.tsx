@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { Star } from "lucide-react"
+import { SquarePen, Star } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
@@ -116,6 +116,45 @@ function getProfileDraftKey(userId: string) {
   return `profile-edit-draft:${userId}`
 }
 
+const POSTS_STORAGE_URL =
+  "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/posts-media/"
+const VEHICLE_STORAGE_URL =
+  "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
+
+type UserVehicleRow = {
+  id: string
+  slug: string
+  year: number | null
+  version_name: string | null
+  image_url?: string | null
+  vehicles:
+    | {
+        name: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }[]
+    | {
+        name: string | null
+        brands: { name: string | null }[] | { name: string | null } | null
+      }
+    | null
+}
+
+type UserPostRow = {
+  id: string
+  type: "noticia" | "publicacao"
+  title: string | null
+  description: string
+  media_path: string | null
+  media_kind: "image" | "video" | null
+  created_at: string
+}
+
+type VehicleStats = {
+  comments: number
+  confirmed: number
+  denied: number
+}
+
 export default function ProfilePageContent({ forcedProfileId, editMode = false }: ProfilePageContentProps) {
   const { session, loading: authLoading } = useAuth()
 
@@ -131,6 +170,12 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
   const [savingRating, setSavingRating] = useState(false)
   const [confirmationRate, setConfirmationRate] = useState<number | null>(null)
   const [confirmationVotes, setConfirmationVotes] = useState(0)
+  const [activeTab, setActiveTab] = useState<"vehicles" | "posts">("vehicles")
+  const [registeredVehicles, setRegisteredVehicles] = useState<UserVehicleRow[]>([])
+  const [vehicleStatsByVersion, setVehicleStatsByVersion] = useState<Record<string, VehicleStats>>({})
+  const [userPosts, setUserPosts] = useState<UserPostRow[]>([])
+  const [loadingContributions, setLoadingContributions] = useState(true)
+  const [postsTableAvailable, setPostsTableAvailable] = useState(true)
 
   const profileId = forcedProfileId ?? session?.user?.id ?? null
   const isOwnProfile = Boolean(session?.user?.id && profileId === session.user.id)
@@ -540,6 +585,193 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
 
   const locationLabel = [profile?.city, profile?.state].filter(Boolean).join(" - ")
 
+  const toPostMediaSrc = (mediaPath: string | null) => {
+    if (!mediaPath) return null
+    if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) return mediaPath
+    return `${POSTS_STORAGE_URL}${mediaPath}`
+  }
+
+  const toVehicleLabel = (vehicleVersion: UserVehicleRow) => {
+    const vehicle = Array.isArray(vehicleVersion.vehicles)
+      ? vehicleVersion.vehicles[0]
+      : vehicleVersion.vehicles
+    const brandData = Array.isArray(vehicle?.brands)
+      ? vehicle.brands[0]
+      : vehicle?.brands
+    const brand = brandData?.name ?? ""
+    const model = vehicle?.name ?? ""
+    const versionName = vehicleVersion.version_name ?? ""
+    const year = vehicleVersion.year ?? ""
+    return [brand, model, versionName, year].filter(Boolean).join(" ")
+  }
+
+  const toVehicleImageSrc = (imagePath?: string | null) => {
+    if (!imagePath) return null
+    if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) return imagePath
+    return `${VEHICLE_STORAGE_URL}${imagePath}`
+  }
+
+  useEffect(() => {
+    const fetchContributions = async () => {
+      if (!profileId) return
+      setLoadingContributions(true)
+
+      const vehiclesRes = await supabase
+        .from("vehicle_versions")
+        .select("id,slug,year,version_name,image_url,vehicles(name,brands(name))")
+        .eq("created_by", profileId)
+        .order("created_at", { ascending: false })
+
+      let resolvedVehicles: UserVehicleRow[] = []
+
+      if (
+        vehiclesRes.error &&
+        /column|schema cache|does not exist/i.test(vehiclesRes.error.message ?? "")
+      ) {
+        const fallbackVehiclesRes = await supabase
+          .from("vehicle_versions")
+          .select("id,slug,year,version_name,image_url,vehicles(name,brands(name))")
+          .eq("created_by", profileId)
+          .order("year", { ascending: false })
+        resolvedVehicles = (fallbackVehiclesRes.data as UserVehicleRow[] | null) ?? []
+        setRegisteredVehicles(resolvedVehicles)
+      } else {
+        resolvedVehicles = (vehiclesRes.data as UserVehicleRow[] | null) ?? []
+        setRegisteredVehicles(resolvedVehicles)
+      }
+
+      const vehicleVersionIds = resolvedVehicles.map((item) => item.id)
+
+      if (vehicleVersionIds.length > 0) {
+        const [commentsRes, positivesRes, defectsRes] = await Promise.all([
+          supabase
+            .from("vehicle_comments")
+            .select("id,vehicle_version_id")
+            .in("vehicle_version_id", vehicleVersionIds),
+          supabase
+            .from("positives")
+            .select("id,vehicle_version_id")
+            .in("vehicle_version_id", vehicleVersionIds),
+          supabase
+            .from("defects")
+            .select("id,vehicle_version_id")
+            .in("vehicle_version_id", vehicleVersionIds),
+        ])
+
+        const comments =
+          (commentsRes.data as { id: string; vehicle_version_id: string }[] | null) ?? []
+        const positives =
+          (positivesRes.data as { id: string; vehicle_version_id: string }[] | null) ?? []
+        const defects =
+          (defectsRes.data as { id: string; vehicle_version_id: string }[] | null) ?? []
+
+        const commentIds = comments.map((item) => item.id)
+        const positiveIds = positives.map((item) => item.id)
+        const defectIds = defects.map((item) => item.id)
+
+        const [commentVotesRes, positiveVotesRes, defectVotesRes] = await Promise.all([
+          commentIds.length > 0
+            ? supabase
+                .from("vehicle_comment_votes")
+                .select("comment_id,is_confirmed")
+                .in("comment_id", commentIds)
+            : Promise.resolve({ data: [] }),
+          positiveIds.length > 0
+            ? supabase
+                .from("positive_votes")
+                .select("positive_id,is_confirmed")
+                .in("positive_id", positiveIds)
+            : Promise.resolve({ data: [] }),
+          defectIds.length > 0
+            ? supabase
+                .from("defect_votes")
+                .select("defect_id,is_confirmed")
+                .in("defect_id", defectIds)
+            : Promise.resolve({ data: [] }),
+        ])
+
+        const statsMap: Record<string, VehicleStats> = {}
+        for (const id of vehicleVersionIds) {
+          statsMap[id] = { comments: 0, confirmed: 0, denied: 0 }
+        }
+
+        const commentToVersion: Record<string, string> = {}
+        for (const item of comments) {
+          commentToVersion[item.id] = item.vehicle_version_id
+          if (!statsMap[item.vehicle_version_id]) {
+            statsMap[item.vehicle_version_id] = { comments: 0, confirmed: 0, denied: 0 }
+          }
+          statsMap[item.vehicle_version_id].comments += 1
+        }
+
+        const positiveToVersion: Record<string, string> = {}
+        for (const item of positives) {
+          positiveToVersion[item.id] = item.vehicle_version_id
+          if (!statsMap[item.vehicle_version_id]) {
+            statsMap[item.vehicle_version_id] = { comments: 0, confirmed: 0, denied: 0 }
+          }
+        }
+
+        const defectToVersion: Record<string, string> = {}
+        for (const item of defects) {
+          defectToVersion[item.id] = item.vehicle_version_id
+          if (!statsMap[item.vehicle_version_id]) {
+            statsMap[item.vehicle_version_id] = { comments: 0, confirmed: 0, denied: 0 }
+          }
+        }
+
+        for (const vote of
+          (commentVotesRes.data as { comment_id: string; is_confirmed: boolean }[] | null) ?? []) {
+          const versionId = commentToVersion[vote.comment_id]
+          if (!versionId) continue
+          if (vote.is_confirmed) statsMap[versionId].confirmed += 1
+          else statsMap[versionId].denied += 1
+        }
+
+        for (const vote of
+          (positiveVotesRes.data as { positive_id: string; is_confirmed: boolean }[] | null) ?? []) {
+          const versionId = positiveToVersion[vote.positive_id]
+          if (!versionId) continue
+          if (vote.is_confirmed) statsMap[versionId].confirmed += 1
+          else statsMap[versionId].denied += 1
+        }
+
+        for (const vote of
+          (defectVotesRes.data as { defect_id: string; is_confirmed: boolean }[] | null) ?? []) {
+          const versionId = defectToVersion[vote.defect_id]
+          if (!versionId) continue
+          if (vote.is_confirmed) statsMap[versionId].confirmed += 1
+          else statsMap[versionId].denied += 1
+        }
+
+        setVehicleStatsByVersion(statsMap)
+      } else {
+        setVehicleStatsByVersion({})
+      }
+
+      const postsRes = await supabase
+        .from("user_posts")
+        .select("id,type,title,description,media_path,media_kind,created_at")
+        .eq("author_user_id", profileId)
+        .order("created_at", { ascending: false })
+
+      if (
+        postsRes.error &&
+        /relation|table|schema cache|does not exist/i.test(postsRes.error.message ?? "")
+      ) {
+        setPostsTableAvailable(false)
+        setUserPosts([])
+      } else {
+        setPostsTableAvailable(true)
+        setUserPosts((postsRes.data as UserPostRow[] | null) ?? [])
+      }
+
+      setLoadingContributions(false)
+    }
+
+    void fetchContributions()
+  }, [profileId])
+
   const handleSaveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!isOwnProfile || !session?.user?.id) return
@@ -786,6 +1018,13 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
               >
                 Gerenciar plano
               </Link>
+              <Link
+                href="/postagens/nova"
+                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                <SquarePen size={15} />
+                Nova postagem
+              </Link>
             </div>
           ) : null}
 
@@ -968,6 +1207,153 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
               {saving ? "Salvando..." : "Salvar perfil"}
             </button>
           </form>
+        ) : null}
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 md:p-8 shadow-sm">
+        <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-4">
+          <button
+            type="button"
+            onClick={() => setActiveTab("vehicles")}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "vehicles"
+                ? "bg-black text-white"
+                : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            Veiculos/Versoes
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("posts")}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === "posts"
+                ? "bg-black text-white"
+                : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+            }`}
+          >
+            Postagens
+          </button>
+        </div>
+
+        {loadingContributions ? (
+          <p className="mt-4 text-sm text-gray-600">Carregando conteudo...</p>
+        ) : null}
+
+        {!loadingContributions && activeTab === "vehicles" ? (
+          <div className="mt-4 space-y-3">
+            {!registeredVehicles.length ? (
+              <p className="text-sm text-gray-600">Nenhum veiculo/versao registrado.</p>
+            ) : null}
+
+            {registeredVehicles.map((item) => (
+              <article key={item.id} className="rounded-xl border border-gray-200 p-3">
+                <div className="flex items-start gap-3">
+                  {toVehicleImageSrc(item.image_url) ? (
+                    <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded border border-gray-200 bg-gray-100">
+                      <Image
+                        src={toVehicleImageSrc(item.image_url)!}
+                        alt={toVehicleLabel(item)}
+                        fill
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-16 w-24 shrink-0 rounded border border-gray-200 bg-gray-100" />
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/carros/${item.slug}`}
+                      className="text-sm font-medium text-gray-900 hover:underline"
+                    >
+                      {toVehicleLabel(item)}
+                    </Link>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Link
+                        href={`/carros/${item.slug}#comentarios`}
+                        className="rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                      >
+                        Comentários ({vehicleStatsByVersion[item.id]?.comments ?? 0})
+                      </Link>
+                      <Link
+                        href={`/carros/${item.slug}#positivos`}
+                        className="rounded-full border border-green-300 px-3 py-1 text-xs text-green-700 hover:bg-green-50"
+                      >
+                        Confirmações ({vehicleStatsByVersion[item.id]?.confirmed ?? 0})
+                      </Link>
+                      <Link
+                        href={`/carros/${item.slug}#defeitos-pontuais`}
+                        className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50"
+                      >
+                        Negações ({vehicleStatsByVersion[item.id]?.denied ?? 0})
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {!loadingContributions && activeTab === "posts" ? (
+          <div className="mt-4 space-y-4">
+            {canManageOwnProfile ? (
+              <div className="flex justify-end">
+                <Link
+                  href="/postagens/nova"
+                  className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-900 transition"
+                >
+                  <SquarePen size={15} />
+                  Nova postagem
+                </Link>
+              </div>
+            ) : null}
+
+            {!postsTableAvailable ? (
+              <p className="text-sm text-gray-600">
+                Estrutura de postagens ainda nao foi criada no banco.
+              </p>
+            ) : null}
+
+            {postsTableAvailable && !userPosts.length ? (
+              <p className="text-sm text-gray-600">Nenhuma postagem publicada.</p>
+            ) : null}
+
+            {postsTableAvailable &&
+              userPosts.map((post) => {
+                const mediaSrc = toPostMediaSrc(post.media_path)
+                return (
+                  <article key={post.id} className="rounded-xl border border-gray-200 p-4">
+                    <p className="text-xs uppercase tracking-[0.08em] text-gray-500">
+                      {post.type === "noticia" ? "Noticia" : "Publicacao"} •{" "}
+                      {new Date(post.created_at).toLocaleDateString("pt-BR")}
+                    </p>
+                    {post.title ? (
+                      <h3 className="mt-1 text-base font-semibold text-gray-900">{post.title}</h3>
+                    ) : null}
+                    <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">
+                      {post.description}
+                    </p>
+
+                    {mediaSrc && post.media_kind === "image" ? (
+                      <div className="relative mt-3 h-72 w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
+                        <Image src={mediaSrc} alt="Midia da postagem" fill className="object-cover" />
+                      </div>
+                    ) : null}
+
+                    {mediaSrc && post.media_kind === "video" ? (
+                      <video
+                        src={mediaSrc}
+                        controls
+                        className="mt-3 h-72 w-full rounded-lg border border-gray-200 bg-black object-cover"
+                      />
+                    ) : null}
+                  </article>
+                )
+              })}
+          </div>
         ) : null}
       </section>
     </div>
