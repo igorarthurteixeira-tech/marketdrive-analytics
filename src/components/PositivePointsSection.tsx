@@ -1,9 +1,9 @@
 "use client"
 
-import Link from "next/link"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
+import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 type PositivePoint = {
   id: string
@@ -27,17 +27,27 @@ type ProfileRow = {
   id: string
   name: string | null
   username?: string | null
+  avatar_url?: string | null
+}
+
+const toMentionLabel = (username?: string | null, name?: string | null) => {
+  const cleanUsername = (username ?? "").trim().replace(/^@+/, "")
+  if (cleanUsername) return `@${cleanUsername}`
+  return (name ?? "Autor").trim() || "Autor"
 }
 
 export default function PositivePointsSection({
   vehicleVersionId,
+  vehicleOwnerId,
 }: {
   vehicleVersionId: string
+  vehicleOwnerId?: string | null
 }) {
   const { session } = useAuth()
 
   const [points, setPoints] = useState<PositivePoint[]>([])
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({})
+  const [authorAvatars, setAuthorAvatars] = useState<Record<string, string | null>>({})
   const [authorMentions, setAuthorMentions] = useState<Record<string, string>>({})
   const [stats, setStats] = useState<Record<string, VoteStats>>({})
   const [loading, setLoading] = useState(true)
@@ -46,12 +56,19 @@ export default function PositivePointsSection({
 
   const canVote = Boolean(session?.user?.id)
 
-  const quoteInComments = (pointId: string, text: string, authorName: string) => {
+  const quoteInComments = (
+    pointId: string,
+    text: string,
+    authorName: string,
+    authorId: string | null
+  ) => {
     if (typeof window === "undefined") return
 
+    const detail = { pointType: "positive" as const, pointId, text, authorName, authorId }
+    window.dispatchEvent(new CustomEvent("quote-point", { detail }))
     window.dispatchEvent(
       new CustomEvent("quote-positive-point", {
-        detail: { pointId, text, authorName },
+        detail,
       })
     )
   }
@@ -81,20 +98,23 @@ export default function PositivePointsSection({
     if (authorIds.length) {
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id,name,username")
+        .select("id,name,username,avatar_url")
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
+      const mappedAvatars: Record<string, string | null> = {}
       const mappedMentions: Record<string, string> = {}
       for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
-        const username = row.username?.trim()
-        mappedMentions[row.id] = username ? `@${username}` : row.name ?? "Autor"
+        mappedAvatars[row.id] = row.avatar_url ?? null
+        mappedMentions[row.id] = toMentionLabel(row.username, row.name)
       }
       setAuthorNames(mappedNames)
+      setAuthorAvatars(mappedAvatars)
       setAuthorMentions(mappedMentions)
     } else {
       setAuthorNames({})
+      setAuthorAvatars({})
       setAuthorMentions({})
     }
 
@@ -106,7 +126,7 @@ export default function PositivePointsSection({
         .in("positive_id", pointIds)
 
       if (votesError) {
-        setErrorMessage("Falha ao carregar avaliacoes dos pontos positivos.")
+        setErrorMessage("Falha ao carregar avaliações dos pontos positivos.")
       } else {
         const nextStats: Record<string, VoteStats> = {}
         for (const row of (votesData as VoteRow[]) ?? []) {
@@ -143,7 +163,7 @@ export default function PositivePointsSection({
 
   const vote = async (positiveId: string, isConfirmed: boolean) => {
     if (!session?.user?.id) {
-      setErrorMessage("Faca login para avaliar este ponto.")
+      setErrorMessage("Faça login para avaliar este ponto.")
       return
     }
 
@@ -171,12 +191,41 @@ export default function PositivePointsSection({
             )
 
     if (error) {
-      setErrorMessage(`Falha ao registrar avaliacao: ${error.message}`)
+      setErrorMessage(`Falha ao registrar avaliação: ${error.message}`)
       setSubmittingVoteId(null)
       return
     }
 
-    await fetchData()
+    setStats((prev) => {
+      const current = prev[positiveId] ?? { confirmed: 0, denied: 0, userVote: null }
+      let confirmed = current.confirmed
+      let denied = current.denied
+      let userVote: boolean | null = current.userVote
+
+      if (current.userVote === isConfirmed) {
+        if (isConfirmed) confirmed = Math.max(0, confirmed - 1)
+        else denied = Math.max(0, denied - 1)
+        userVote = null
+      } else if (current.userVote === null) {
+        if (isConfirmed) confirmed += 1
+        else denied += 1
+        userVote = isConfirmed
+      } else {
+        if (isConfirmed) {
+          denied = Math.max(0, denied - 1)
+          confirmed += 1
+        } else {
+          confirmed = Math.max(0, confirmed - 1)
+          denied += 1
+        }
+        userVote = isConfirmed
+      }
+
+      return {
+        ...prev,
+        [positiveId]: { confirmed, denied, userVote },
+      }
+    })
     setSubmittingVoteId(null)
   }
 
@@ -195,6 +244,7 @@ export default function PositivePointsSection({
         deniedPct,
         authorName: point.created_by ? authorNames[point.created_by] ?? "Autor" : "Autor",
         authorMention: point.created_by ? authorMentions[point.created_by] ?? "Autor" : "Autor",
+        authorId: point.created_by,
       }
     })
   }, [points, stats, authorNames, authorMentions])
@@ -208,28 +258,26 @@ export default function PositivePointsSection({
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
       {!cards.length ? (
-        <p className="text-gray-600">Nenhum ponto positivo cadastrado para esta versao.</p>
+        <p className="text-gray-600">Nenhum ponto positivo cadastrado para esta versão.</p>
       ) : null}
 
-      {cards.map(({ point, pointStats, total, confirmedPct, deniedPct, authorName, authorMention }) => (
+      {cards.map(
+        ({ point, pointStats, total, confirmedPct, deniedPct, authorName, authorMention, authorId }) => (
         <article
           id={`positive-point-${point.id}`}
           key={point.id}
           className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm scroll-mt-28"
         >
           <div className="flex items-center justify-between gap-3 mb-3">
-            {point.created_by ? (
-              <Link
-                href={`/perfil/${point.created_by}`}
-                className="text-sm font-medium text-gray-700 hover:text-black underline-offset-2 hover:underline"
-              >
-                {authorName}
-              </Link>
-            ) : (
-              <span className="text-sm font-medium text-gray-700">{authorName}</span>
-            )}
+            <UserIdentityBadge
+              name={authorName}
+              profileId={point.created_by}
+              avatarUrl={point.created_by ? (authorAvatars[point.created_by] ?? null) : null}
+              badgeText={point.created_by === vehicleOwnerId ? "Autor do veículo" : null}
+              size="sm"
+            />
 
-            <span className="text-xs text-gray-500">{total} avaliacoes</span>
+            <span className="text-xs text-gray-500">{total} avaliações</span>
           </div>
 
           <p className="text-gray-900">{point.description}</p>
@@ -263,19 +311,19 @@ export default function PositivePointsSection({
 
             <button
               type="button"
-              onClick={() => quoteInComments(point.id, point.description, authorMention)}
+              onClick={() => quoteInComments(point.id, point.description, authorMention, authorId ?? null)}
               className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition-colors cursor-pointer"
             >
-              Citar nos comentarios
+              Citar nos comentários
             </button>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
             <div className="rounded-md bg-green-50 text-green-800 px-2 py-1">
-              Confirmacao: {confirmedPct}% ({pointStats.confirmed})
+              Confirmação: {confirmedPct}% ({pointStats.confirmed})
             </div>
             <div className="rounded-md bg-red-50 text-red-800 px-2 py-1">
-              Negacao: {deniedPct}% ({pointStats.denied})
+              Negação: {deniedPct}% ({pointStats.denied})
             </div>
           </div>
         </article>

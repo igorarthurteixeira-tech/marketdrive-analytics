@@ -20,6 +20,22 @@ html {
   }
 }
 
+@keyframes toastCountdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.toast-timer-bar {
+  transform-origin: left center;
+  animation-name: toastCountdown;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

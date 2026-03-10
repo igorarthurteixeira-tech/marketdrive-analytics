@@ -6,13 +6,18 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import VehicleCardImage from "@/components/VehicleCardImage"
 import StarRating from "@/components/ui/StarRating"
+import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 type EnrichedVehicle = {
   id: string
   slug: string
+  createdBy: string | null
+  authorName: string
+  authorAvatarUrl: string | null
   year: number
   engine: string
   transmission: string
+  fuelTypes: string[]
   versionName: string
   versionTier: string
   modelName: string
@@ -26,10 +31,12 @@ type EnrichedVehicle = {
 type VehicleRow = {
   id: string
   slug: string
+  created_by?: string | null
   image_url?: string | null
   year: number
   engine: string
   transmission: string
+  fuel_types?: string[] | null
   version_name: string | null
   version_tier: string | null
   vehicles:
@@ -62,6 +69,12 @@ type RatingRow = {
   rating: number
 }
 
+type ProfileRow = {
+  id: string
+  name: string | null
+  avatar_url?: string | null
+}
+
 export default function CarrosPage() {
   const { session } = useAuth()
 
@@ -81,10 +94,12 @@ export default function CarrosPage() {
       const fullSelect = `
           id,
           slug,
+          created_by,
           image_url,
           year,
           engine,
           transmission,
+          fuel_types,
           version_name,
           version_tier,
           vehicles (
@@ -97,9 +112,11 @@ export default function CarrosPage() {
       const fallbackSelect = `
           id,
           slug,
+          created_by,
           year,
           engine,
           transmission,
+          fuel_types,
           version_name,
           version_tier,
           vehicles (
@@ -124,6 +141,29 @@ export default function CarrosPage() {
           .order("year", { ascending: false })
         versions = fallback.data as VehicleRow[] | null
         versionsError = fallback.error
+
+        if (versionsError && /column|schema cache/i.test(versionsError.message ?? "")) {
+          const legacyFallback = await supabase
+            .from("vehicle_versions")
+            .select(`
+              id,
+              slug,
+              year,
+              engine,
+              transmission,
+              fuel_types,
+              version_name,
+              version_tier,
+              vehicles (
+                name,
+                image_url,
+                brands ( name )
+              )
+            `)
+            .order("year", { ascending: false })
+          versions = legacyFallback.data as VehicleRow[] | null
+          versionsError = legacyFallback.error
+        }
       }
 
       if (versionsError || !versions) {
@@ -134,6 +174,26 @@ export default function CarrosPage() {
       }
 
       const versionIds = (versions as VehicleRow[]).map((version) => version.id)
+      const authorIds = Array.from(
+        new Set(
+          (versions as VehicleRow[])
+            .map((version) => version.created_by)
+            .filter((id): id is string => Boolean(id))
+        )
+      )
+
+      const authorMap: Record<string, string> = {}
+      const authorAvatarMap: Record<string, string | null> = {}
+      if (authorIds.length > 0) {
+        const profilesRes = await supabase
+          .from("profiles")
+          .select("id,name,avatar_url")
+          .in("id", authorIds)
+        for (const row of (profilesRes.data as ProfileRow[] | null) ?? []) {
+          authorMap[row.id] = row.name ?? "Autor da comunidade"
+          authorAvatarMap[row.id] = row.avatar_url ?? null
+        }
+      }
 
       const positivesRes = await supabase
         .from("positives")
@@ -208,9 +268,13 @@ export default function CarrosPage() {
         return {
           id: version.id,
           slug: version.slug,
+          createdBy: version.created_by ?? null,
+          authorName: version.created_by ? authorMap[version.created_by] ?? "Autor da comunidade" : "Autor da comunidade",
+          authorAvatarUrl: version.created_by ? authorAvatarMap[version.created_by] ?? null : null,
           year: version.year,
           engine: version.engine,
           transmission: version.transmission,
+          fuelTypes: Array.isArray(version.fuel_types) ? version.fuel_types : [],
           versionName: version.version_name ?? "",
           versionTier: version.version_tier ?? "",
           modelName: vehicle?.name ?? "",
@@ -272,6 +336,7 @@ export default function CarrosPage() {
         vehicle.versionName,
         vehicle.engine,
         vehicle.transmission,
+        ...(vehicle.fuelTypes ?? []),
         String(vehicle.year),
       ]
         .join(" ")
@@ -371,10 +436,37 @@ export default function CarrosPage() {
             </div>
 
             <div className="p-6">
+              <UserIdentityBadge
+                name={version.authorName}
+                profileId={version.createdBy}
+                avatarUrl={version.authorAvatarUrl}
+                size="xs"
+                disableProfileLink
+              />
+
               <p className="text-sm font-medium text-gray-900">Ano {version.year}</p>
 
               <p className="text-gray-500 text-sm mt-2 transition-colors duration-300 group-hover:text-gray-600">
                 {version.brandName} • Intermediaria • {version.engine} {version.transmission}
+              </p>
+
+              <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">
+                Combustível:{" "}
+                {version.fuelTypes.length
+                  ? version.fuelTypes
+                      .map((fuel) => {
+                        const map: Record<string, string> = {
+                          gasolina: "Gasolina",
+                          etanol: "Etanol",
+                          diesel: "Diesel",
+                          eletrico: "Elétrico",
+                          hibrido: "Híbrido",
+                          gnv: "GNV",
+                        }
+                        return map[fuel.toLowerCase()] ?? fuel
+                      })
+                      .join(" / ")
+                  : "Não informado"}
               </p>
 
               <div className="mt-3">

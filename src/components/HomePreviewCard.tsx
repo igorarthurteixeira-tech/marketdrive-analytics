@@ -1,6 +1,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import StarRating from "@/components/ui/StarRating"
+import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 const STORAGE_URL =
   "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
@@ -9,6 +10,9 @@ type HomePreviewCardProps = {
   slug: string
   name: string
   image: string | null
+  authorId: string | null
+  authorName: string
+  authorAvatarUrl: string | null
   rating: number | null
   ratingCount: number
   topPositive: string | null
@@ -18,6 +22,9 @@ export default function HomePreviewCard({
   slug,
   name,
   image,
+  authorId,
+  authorName,
+  authorAvatarUrl,
   rating,
   ratingCount,
   topPositive,
@@ -54,6 +61,15 @@ export default function HomePreviewCard({
         <h3 className="text-lg font-semibold transition-colors duration-300 group-hover:text-red-700">
           {name}
         </h3>
+        <div className="mt-1">
+          <UserIdentityBadge
+            name={authorName}
+            profileId={authorId}
+            avatarUrl={authorAvatarUrl}
+            size="xs"
+            disableProfileLink
+          />
+        </div>
 
         <div className="mt-3">
           <StarRating rating={displayRating} showValue={hasRatings} />

@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
+import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 type CommentRow = {
   id: string
@@ -32,12 +33,15 @@ type ProfileRow = {
   id: string
   name: string | null
   username?: string | null
+  avatar_url?: string | null
 }
 
 type QuotedPoint = {
+  pointType: "positive" | "defect"
   pointId: string
   text: string
   authorName: string
+  authorId?: string | null
 }
 
 type CommentCard = {
@@ -45,6 +49,7 @@ type CommentCard = {
   commentStats: VoteStats
   authorName: string
   replyToAuthorName: string | null
+  replyToUserId: string | null
 }
 
 type CommentSortMode = "visibility" | "recency"
@@ -59,7 +64,7 @@ const getInitialSortMode = (vehicleVersionId: string): CommentSortMode => {
 const QUOTE_PREFIX = "[[QUOTE|"
 
 const serializeQuote = (quote: QuotedPoint) =>
-  `${QUOTE_PREFIX}${quote.pointId}|${encodeURIComponent(quote.text)}|${encodeURIComponent(quote.authorName)}]]`
+  `${QUOTE_PREFIX}${quote.pointType}|${quote.pointId}|${encodeURIComponent(quote.text)}|${encodeURIComponent(quote.authorName)}|${encodeURIComponent(quote.authorId ?? "")}]]`
 
 const parseCommentContent = (content: string): { quote: QuotedPoint | null; body: string } => {
   if (!content.startsWith(QUOTE_PREFIX)) {
@@ -72,7 +77,26 @@ const parseCommentContent = (content: string): { quote: QuotedPoint | null; body
   }
 
   const header = content.slice(QUOTE_PREFIX.length, endIndex)
-  const [pointId, rawText, rawAuthor] = header.split("|")
+  const parts = header.split("|")
+  let pointType: "positive" | "defect" = "positive"
+  let pointId = ""
+  let rawText = ""
+  let rawAuthor = ""
+  let rawAuthorId = ""
+
+  if (parts.length >= 5) {
+    pointType = parts[0] === "defect" ? "defect" : "positive"
+    pointId = parts[1]
+    rawText = parts[2]
+    rawAuthor = parts[3]
+    rawAuthorId = parts[4] ?? ""
+  } else {
+    pointId = parts[0] ?? ""
+    rawText = parts[1] ?? ""
+    rawAuthor = parts[2] ?? ""
+    rawAuthorId = parts[3] ?? ""
+  }
+
   if (!pointId || !rawText || !rawAuthor) {
     return { quote: null, body: content }
   }
@@ -80,12 +104,20 @@ const parseCommentContent = (content: string): { quote: QuotedPoint | null; body
   const body = content.slice(endIndex + 2).trimStart()
   return {
     quote: {
+      pointType,
       pointId,
       text: decodeURIComponent(rawText),
       authorName: decodeURIComponent(rawAuthor),
+      authorId: rawAuthorId ? decodeURIComponent(rawAuthorId) : null,
     },
     body,
   }
+}
+
+const toMentionLabel = (value: string) => {
+  const clean = value.trim().replace(/^@+/, "")
+  if (!clean) return "@autor"
+  return `@${clean}`
 }
 
 export default function CommentDiscussionSection({
@@ -99,6 +131,7 @@ export default function CommentDiscussionSection({
 
   const [comments, setComments] = useState<CommentRow[]>([])
   const [authorNames, setAuthorNames] = useState<Record<string, string>>({})
+  const [authorAvatars, setAuthorAvatars] = useState<Record<string, string | null>>({})
   const [authorMentions, setAuthorMentions] = useState<Record<string, string>>({})
   const [stats, setStats] = useState<Record<string, VoteStats>>({})
   const [newComment, setNewComment] = useState("")
@@ -117,6 +150,7 @@ export default function CommentDiscussionSection({
     getInitialSortMode(vehicleVersionId)
   )
   const [errorMessage, setErrorMessage] = useState("")
+  const commentInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const canInteract = Boolean(session?.user?.id)
   const canPinComments = Boolean(session?.user?.id && vehicleOwnerId && session.user.id === vehicleOwnerId)
@@ -156,7 +190,7 @@ export default function CommentDiscussionSection({
             .order("created_at", { ascending: false })
 
           if (minimalRes.error) {
-            setErrorMessage("Falha ao carregar comentarios.")
+            setErrorMessage("Falha ao carregar comentários.")
             setLoading(false)
             return
           }
@@ -184,7 +218,7 @@ export default function CommentDiscussionSection({
           )
         }
       } else {
-        setErrorMessage("Falha ao carregar comentarios.")
+        setErrorMessage("Falha ao carregar comentários.")
         setLoading(false)
         return
       }
@@ -207,20 +241,24 @@ export default function CommentDiscussionSection({
     if (authorIds.length) {
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id,name,username")
+        .select("id,name,username,avatar_url")
         .in("id", authorIds)
 
       const mappedNames: Record<string, string> = {}
+      const mappedAvatars: Record<string, string | null> = {}
       const mappedMentions: Record<string, string> = {}
       for (const row of (profilesData as ProfileRow[] | null) ?? []) {
         mappedNames[row.id] = row.name ?? "Autor"
+        mappedAvatars[row.id] = row.avatar_url ?? null
         const username = row.username?.trim()
         mappedMentions[row.id] = username ? username : row.name ?? "autor"
       }
       setAuthorNames(mappedNames)
+      setAuthorAvatars(mappedAvatars)
       setAuthorMentions(mappedMentions)
     } else {
       setAuthorNames({})
+      setAuthorAvatars({})
       setAuthorMentions({})
     }
 
@@ -232,7 +270,7 @@ export default function CommentDiscussionSection({
         .in("comment_id", commentIds)
 
       if (votesError) {
-        setErrorMessage("Falha ao carregar avaliacoes dos comentarios.")
+        setErrorMessage("Falha ao carregar avaliações dos comentários.")
       } else {
         const nextStats: Record<string, VoteStats> = {}
         for (const row of (votesData as VoteRow[]) ?? []) {
@@ -269,24 +307,42 @@ export default function CommentDiscussionSection({
   useEffect(() => {
     const handler = (event: Event) => {
       const customEvent = event as CustomEvent<{
+        pointType?: "positive" | "defect"
         pointId?: string
         text?: string
         authorName?: string
+        authorId?: string
       }>
+      const pointType = customEvent.detail?.pointType === "defect" ? "defect" : "positive"
       const pointId = customEvent.detail?.pointId?.trim()
       const quotedText = customEvent.detail?.text?.trim()
       const authorName = customEvent.detail?.authorName?.trim() ?? "Autor"
+      const authorId = customEvent.detail?.authorId?.trim() ?? null
       if (!pointId || !quotedText) return
 
       setQuotedPoint({
+        pointType,
         pointId,
         text: quotedText,
         authorName,
+        authorId,
       })
+
+      window.setTimeout(() => {
+        if (!commentInputRef.current) return
+        commentInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" })
+        commentInputRef.current.focus()
+      }, 0)
     }
 
+    window.addEventListener("quote-point", handler as EventListener)
     window.addEventListener("quote-positive-point", handler as EventListener)
-    return () => window.removeEventListener("quote-positive-point", handler as EventListener)
+    window.addEventListener("quote-defect-point", handler as EventListener)
+    return () => {
+      window.removeEventListener("quote-point", handler as EventListener)
+      window.removeEventListener("quote-positive-point", handler as EventListener)
+      window.removeEventListener("quote-defect-point", handler as EventListener)
+    }
   }, [])
 
   useEffect(() => {
@@ -297,7 +353,7 @@ export default function CommentDiscussionSection({
   const handleCommentSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!canInteract) {
-      setErrorMessage("Faca login para comentar.")
+      setErrorMessage("Faça login para comentar.")
       return
     }
 
@@ -318,7 +374,7 @@ export default function CommentDiscussionSection({
       })
 
     if (error) {
-      setErrorMessage(`Falha ao publicar comentario: ${error.message}`)
+      setErrorMessage(`Falha ao publicar comentário: ${error.message}`)
       setSavingComment(false)
       return
     }
@@ -331,7 +387,7 @@ export default function CommentDiscussionSection({
 
   const vote = async (commentId: string, isConfirmed: boolean) => {
     if (!canInteract || !session?.user?.id) {
-      setErrorMessage("Faca login para avaliar comentarios.")
+      setErrorMessage("Faça login para avaliar comentários.")
       return
     }
 
@@ -359,7 +415,7 @@ export default function CommentDiscussionSection({
             )
 
     if (error) {
-      setErrorMessage(`Falha ao registrar avaliacao: ${error.message}`)
+      setErrorMessage(`Falha ao registrar avaliação: ${error.message}`)
       setSubmittingVoteId(null)
       return
     }
@@ -370,7 +426,7 @@ export default function CommentDiscussionSection({
 
   const deleteComment = async (commentId: string) => {
     if (!session?.user?.id) {
-      setErrorMessage("Faca login para apagar seu comentario.")
+      setErrorMessage("Faça login para apagar seu comentário.")
       return
     }
 
@@ -384,7 +440,7 @@ export default function CommentDiscussionSection({
       .eq("created_by", session.user.id)
 
     if (error) {
-      setErrorMessage(`Falha ao apagar comentario: ${error.message}`)
+      setErrorMessage(`Falha ao apagar comentário: ${error.message}`)
       setDeletingCommentId(null)
       return
     }
@@ -395,11 +451,11 @@ export default function CommentDiscussionSection({
 
   const togglePin = async (rootComment: CommentRow) => {
     if (!canPinComments || !session?.user?.id) {
-      setErrorMessage("Somente o autor do veiculo pode fixar comentarios.")
+      setErrorMessage("Somente o autor do veículo pode fixar comentários.")
       return
     }
     if (!pinEnabled) {
-      setErrorMessage("Fixacao de comentarios sera liberada apos a migracao do banco.")
+      setErrorMessage("Fixação de comentários será liberada após a migração do banco.")
       return
     }
 
@@ -410,7 +466,7 @@ export default function CommentDiscussionSection({
         (item) => item.parent_comment_id === null && item.is_pinned
       ).length
       if (pinnedCount >= 3) {
-        setErrorMessage("Voce pode fixar no maximo 3 comentarios.")
+        setErrorMessage("Você pode fixar no máximo 3 comentários.")
         return
       }
     }
@@ -435,11 +491,11 @@ export default function CommentDiscussionSection({
   const submitReply = async (e: FormEvent, rootComment: CommentRow) => {
     e.preventDefault()
     if (!canInteract) {
-      setErrorMessage("Faca login para responder comentarios.")
+      setErrorMessage("Faça login para responder comentários.")
       return
     }
     if (!threadEnabled) {
-      setErrorMessage("Respostas em discussao serao liberadas apos a migracao do banco.")
+      setErrorMessage("Respostas em discussão serão liberadas após a migração do banco.")
       return
     }
     const rootId = rootComment.id
@@ -505,9 +561,21 @@ export default function CommentDiscussionSection({
         replyToAuthorName: comment.reply_to_user_id
           ? authorMentions[comment.reply_to_user_id] ?? "autor"
           : null,
+        replyToUserId: comment.reply_to_user_id ?? null,
       } satisfies CommentCard
     })
   }, [comments, stats, authorNames, authorMentions])
+
+  const getQuoteMention = useCallback(
+    (quote: QuotedPoint) => {
+      if (quote.authorId) {
+        const mapped = authorMentions[quote.authorId]
+        if (mapped) return toMentionLabel(mapped)
+      }
+      return toMentionLabel(quote.authorName)
+    },
+    [authorMentions]
+  )
 
   const { rootCards, repliesByRootId } = useMemo(() => {
     const cardById = new Map(cards.map((card) => [card.comment.id, card]))
@@ -584,16 +652,12 @@ export default function CommentDiscussionSection({
         onSubmit={handleCommentSubmit}
         className="space-y-3 border border-gray-200 rounded-xl p-4 bg-white"
       >
-        <label className="block text-sm font-medium text-gray-700">Deixe um comentario</label>
+        <label className="block text-sm font-medium text-gray-700">Deixe um comentário</label>
 
         {quotedPoint ? (
           <div className="inline-flex items-center gap-2 rounded-full bg-gray-100 border border-gray-300 px-3 py-1.5 text-xs">
-            <Link
-              href={`#positive-point-${quotedPoint.pointId}`}
-              className="text-gray-700 hover:text-black underline-offset-2 hover:underline"
-            >
-              Citando: {quotedPoint.authorName}
-            </Link>
+            <span className="text-gray-700">Citando:</span>
+            <span className="font-medium text-gray-700">{getQuoteMention(quotedPoint)}</span>
             <span className="text-gray-500">&quot;{quotedPoint.text}&quot;</span>
             <button
               type="button"
@@ -607,10 +671,11 @@ export default function CommentDiscussionSection({
         ) : null}
 
         <textarea
+          ref={commentInputRef}
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           rows={3}
-          placeholder="Escreva sua opiniao sobre esta versao..."
+          placeholder="Escreva sua opinião sobre esta versão..."
           className="w-full border border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
         />
         <button
@@ -624,9 +689,9 @@ export default function CommentDiscussionSection({
 
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
 
-      {loading ? <p className="text-gray-500">Carregando comentarios...</p> : null}
+      {loading ? <p className="text-gray-500">Carregando comentários...</p> : null}
       {!loading && !rootCards.length ? (
-        <p className="text-gray-600">Nenhum comentario ainda. Seja o primeiro a comentar.</p>
+        <p className="text-gray-600">Nenhum comentário ainda. Seja o primeiro a comentar.</p>
       ) : null}
 
       {!loading && rootCards.length ? (
@@ -656,7 +721,10 @@ export default function CommentDiscussionSection({
 
         return (
           <section key={rootId}>
-            <article className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm">
+            <article
+              id={`comment-${rootCard.comment.id}`}
+              className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm scroll-mt-24"
+            >
               {rootCard.comment.is_pinned ? (
                 <p className="mb-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
                   Comentário fixado pelo autor
@@ -665,16 +733,17 @@ export default function CommentDiscussionSection({
 
               <div className="flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
-                  {rootCard.comment.created_by ? (
-                    <Link
-                      href={`/perfil/${rootCard.comment.created_by}`}
-                      className="text-sm font-medium text-gray-700 hover:text-black underline-offset-2 hover:underline"
-                    >
-                      {rootCard.authorName}
-                    </Link>
-                  ) : (
-                    <span className="text-sm font-medium text-gray-700">{rootCard.authorName}</span>
-                  )}
+                  <UserIdentityBadge
+                    name={rootCard.authorName}
+                    profileId={rootCard.comment.created_by}
+                    avatarUrl={
+                      rootCard.comment.created_by
+                        ? (authorAvatars[rootCard.comment.created_by] ?? null)
+                        : null
+                    }
+                    badgeText={rootCard.comment.created_by === vehicleOwnerId ? "Autor do veículo" : null}
+                    size="sm"
+                  />
                   {rootCard.comment.is_pinned ? (
                     <span className="text-[11px] px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-700">
                       Fixado
@@ -688,10 +757,16 @@ export default function CommentDiscussionSection({
 
               {parsedRoot.quote ? (
                 <Link
-                  href={`#positive-point-${parsedRoot.quote.pointId}`}
-                  className="inline-flex items-center rounded-full bg-gray-100 border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:text-black hover:bg-gray-50 mb-2"
+                  href={`#${
+                    parsedRoot.quote.pointType === "defect" ? "defect-point" : "positive-point"
+                  }-${parsedRoot.quote.pointId}`}
+                  className="inline-flex flex-col items-start gap-1 rounded-lg bg-gray-100 border border-gray-300 px-3 py-2 text-xs text-gray-700 hover:text-black hover:bg-gray-50 mb-2"
                 >
-                  Citou ponto de {parsedRoot.quote.authorName}: &quot;{parsedRoot.quote.text}&quot;
+                  <div className="inline-flex items-center gap-2">
+                    <span>Citou</span>
+                    <span className="font-medium">{getQuoteMention(parsedRoot.quote)}</span>
+                  </div>
+                  <span>&quot;{parsedRoot.quote.text}&quot;</span>
                 </Link>
               ) : null}
 
@@ -766,25 +841,41 @@ export default function CommentDiscussionSection({
                       {visibleReplies.map((reply) => {
                         const parsedReply = parseCommentContent(reply.comment.content)
                         return (
-                          <div key={reply.comment.id} className="rounded-md bg-gray-50 px-3 py-2">
+                          <div
+                            id={`comment-${reply.comment.id}`}
+                            key={reply.comment.id}
+                            className="rounded-md bg-gray-50 px-3 py-2 scroll-mt-24"
+                          >
                             <div className="flex items-center justify-between gap-3 mb-1">
-                              {reply.comment.created_by ? (
-                                <Link
-                                  href={`/perfil/${reply.comment.created_by}`}
-                                  className="text-xs font-medium text-gray-700 hover:text-black underline-offset-2 hover:underline"
-                                >
-                                  {reply.authorName}
-                                </Link>
-                              ) : (
-                                <span className="text-xs font-medium text-gray-700">{reply.authorName}</span>
-                              )}
+                              <UserIdentityBadge
+                                name={reply.authorName}
+                                profileId={reply.comment.created_by}
+                                avatarUrl={
+                                  reply.comment.created_by
+                                    ? (authorAvatars[reply.comment.created_by] ?? null)
+                                    : null
+                                }
+                                badgeText={reply.comment.created_by === vehicleOwnerId ? "Autor do veículo" : null}
+                                size="xs"
+                              />
                               <span className="text-[11px] text-gray-500">
                                 {new Date(reply.comment.created_at).toLocaleDateString("pt-BR")}
                               </span>
                             </div>
 
                             {reply.replyToAuthorName ? (
-                              <p className="text-[11px] text-gray-500 mb-1">@{reply.replyToAuthorName}</p>
+                              <div className="mb-1">
+                                <UserIdentityBadge
+                                  name={`@${reply.replyToAuthorName}`}
+                                  profileId={reply.replyToUserId}
+                                  avatarUrl={
+                                    reply.replyToUserId
+                                      ? (authorAvatars[reply.replyToUserId] ?? null)
+                                      : null
+                                  }
+                                  size="xs"
+                                />
+                              </div>
                             ) : null}
 
                             {parsedReply.body ? <p className="text-sm text-gray-900">{parsedReply.body}</p> : null}

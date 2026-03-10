@@ -10,6 +10,7 @@ const MAX_HOME_CARDS = 5
 type VersionRow = {
   id: string
   slug: string
+  created_by?: string | null
   year: number | null
   image_url: string | null
   home_featured?: boolean | null
@@ -53,6 +54,9 @@ export type HomeCar = {
   slug: string
   name: string
   image: string | null
+  authorId: string | null
+  authorName: string
+  authorAvatarUrl: string | null
   rating: number | null
   ratingCount: number
   topPositive: string | null
@@ -60,7 +64,9 @@ export type HomeCar = {
 
 function toCard(
   version: VersionRow,
-  meta?: { rating?: number | null; ratingCount?: number; topPositive?: string | null }
+  meta?: { rating?: number | null; ratingCount?: number; topPositive?: string | null },
+  authorName?: string,
+  authorAvatarUrl?: string | null
 ): HomeCar {
   const vehicle = Array.isArray(version.vehicles) ? version.vehicles[0] : version.vehicles
   const brand = Array.isArray(vehicle?.brands) ? vehicle.brands[0] : vehicle?.brands
@@ -70,6 +76,9 @@ function toCard(
     slug: version.slug,
     name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${version.year ?? ""}`.trim(),
     image: vehicle?.image_url ?? version.image_url ?? null,
+    authorId: version.created_by ?? null,
+    authorName: authorName ?? "Autor da comunidade",
+    authorAvatarUrl: authorAvatarUrl ?? null,
     rating: meta?.rating ?? null,
     ratingCount: meta?.ratingCount ?? 0,
     topPositive: meta?.topPositive ?? null,
@@ -89,6 +98,21 @@ async function enrichCards(selected: VersionRow[]): Promise<HomeCar[]> {
   if (!selected.length) return []
 
   const versionIds = selected.map((version) => version.id)
+  const authorIds = Array.from(
+    new Set(selected.map((version) => version.created_by).filter((id): id is string => Boolean(id)))
+  )
+  const authorMap: Record<string, string> = {}
+  const authorAvatarMap: Record<string, string | null> = {}
+  if (authorIds.length > 0) {
+    const profilesRes = await supabase
+      .from("profiles")
+      .select("id,name,avatar_url")
+      .in("id", authorIds)
+    for (const row of ((profilesRes.data as { id: string; name: string | null; avatar_url?: string | null }[] | null) ?? [])) {
+      authorMap[row.id] = row.name ?? "Autor da comunidade"
+      authorAvatarMap[row.id] = row.avatar_url ?? null
+    }
+  }
   const ratingByVersion: Record<string, { total: number; sum: number }> = {}
 
   const ratingsRes = await supabase
@@ -165,13 +189,21 @@ async function enrichCards(selected: VersionRow[]): Promise<HomeCar[]> {
     }
   }
 
-  return selected.map((version) => toCard(version, metaByVersion[version.id]))
+  return selected.map((version) =>
+    toCard(
+      version,
+      metaByVersion[version.id],
+      version.created_by ? authorMap[version.created_by] ?? "Autor da comunidade" : "Autor da comunidade",
+      version.created_by ? authorAvatarMap[version.created_by] ?? null : null
+    )
+  )
 }
 
 export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
   const selectWithFeatured = `
     id,
     slug,
+    created_by,
     year,
     image_url,
     home_featured,
@@ -186,6 +218,7 @@ export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
   const selectFallback = `
     id,
     slug,
+    created_by,
     year,
     image_url,
     vehicles (

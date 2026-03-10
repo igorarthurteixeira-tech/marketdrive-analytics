@@ -22,6 +22,7 @@ type VersionDetail = {
   year: number | null
   engine: string | null
   transmission: string | null
+  fuel_types?: string[] | null
   potencia_cv: number | null
   potencia_texto: string | null
   potencia_alcool_cv: number | null
@@ -36,6 +37,8 @@ type VersionDetail = {
   consumo_gasolina_estrada_kml?: number | null
   consumo_etanol_urbano_kml?: number | null
   consumo_etanol_estrada_kml?: number | null
+  consumo_urbano_kml?: number | null
+  consumo_estrada_kml?: number | null
   latin_ncap_pre_2021?: string | null
   latin_ncap_post_2021?: string | null
   peso_kg: number | null
@@ -84,6 +87,7 @@ export default async function Page({
       year,
       engine,
       transmission,
+      fuel_types,
       potencia_cv,
       potencia_texto,
       potencia_alcool_cv,
@@ -98,6 +102,8 @@ export default async function Page({
       consumo_gasolina_estrada_kml,
       consumo_etanol_urbano_kml,
       consumo_etanol_estrada_kml,
+      consumo_urbano_kml,
+      consumo_estrada_kml,
       latin_ncap_pre_2021,
       latin_ncap_post_2021,
       peso_kg,
@@ -121,6 +127,7 @@ export default async function Page({
       year,
       engine,
       transmission,
+      fuel_types,
       potencia_cv,
       potencia_texto,
       potencia_alcool_cv,
@@ -204,13 +211,32 @@ export default async function Page({
     const alcoholValid = isValidValue(alcohol)
     const gasolineValid = isValidValue(gasoline)
     if (!alcoholValid && !gasolineValid) return null
+    if (alcoholValid && gasolineValid && String(alcohol) === String(gasoline)) {
+      return `${alcohol} km/l`
+    }
     const alcoholText = alcoholValid ? `${alcohol} km/l (E)` : ""
     const gasolineText = gasolineValid ? `${gasoline} km/l (G)` : ""
     return [alcoholText, gasolineText].filter(Boolean).join(" / ")
   }
 
+  const formatFuelTypes = (fuels?: string[] | null) => {
+    if (!Array.isArray(fuels) || fuels.length === 0) return null
+    const labelMap: Record<string, string> = {
+      gasolina: "Gasolina",
+      etanol: "Etanol",
+      diesel: "Diesel",
+      eletrico: "Elétrico",
+      hibrido: "Híbrido",
+      gnv: "GNV",
+    }
+    return fuels
+      .map((fuel) => labelMap[fuel.toLowerCase()] ?? fuel)
+      .join(" / ")
+  }
+
   const geraisItems: SpecItem[] = [
     { label: "Motorização", value: version.engine },
+    { label: "Combustível", value: formatFuelTypes(version.fuel_types) },
     {
       label: "Potência (cv)",
       value: (() => {
@@ -282,15 +308,15 @@ export default async function Page({
     {
       label: "Consumo urbano (km/l)",
       value: formatFuelConsumption(
-        pickFirst(version, ["consumo_etanol_urbano_kml"]),
-        pickFirst(version, ["consumo_gasolina_urbano_kml"])
+        pickFirst(version, ["consumo_etanol_urbano_kml", "consumo_urbano_kml"]),
+        pickFirst(version, ["consumo_gasolina_urbano_kml", "consumo_urbano_kml"])
       ),
     },
     {
       label: "Consumo estrada (km/l)",
       value: formatFuelConsumption(
-        pickFirst(version, ["consumo_etanol_estrada_kml"]),
-        pickFirst(version, ["consumo_gasolina_estrada_kml"])
+        pickFirst(version, ["consumo_etanol_estrada_kml", "consumo_estrada_kml"]),
+        pickFirst(version, ["consumo_gasolina_estrada_kml", "consumo_estrada_kml"])
       ),
     },
   ].filter((item) => isValidValue(item.value))
@@ -393,13 +419,24 @@ export default async function Page({
       <section className="max-w-7xl mx-auto px-8 pb-32 grid lg:grid-cols-[1.2fr_0.8fr] gap-12">
         <div>
           <h2 className="text-2xl font-semibold mb-6">Defeitos Cronicos</h2>
-          <DefectPointsSection vehicleVersionId={version.id} mode="chronic" />
+          <DefectPointsSection
+            vehicleVersionId={version.id}
+            mode="chronic"
+            vehicleOwnerId={version.created_by ?? null}
+          />
 
           <h2 className="text-2xl font-semibold mt-12 mb-6">Problemas Pontuais</h2>
-          <DefectPointsSection vehicleVersionId={version.id} mode="pontual" />
+          <DefectPointsSection
+            vehicleVersionId={version.id}
+            mode="pontual"
+            vehicleOwnerId={version.created_by ?? null}
+          />
 
           <h2 className="text-2xl font-semibold mt-12 mb-6">Pontos Positivos</h2>
-          <PositivePointsSection vehicleVersionId={version.id} />
+          <PositivePointsSection
+            vehicleVersionId={version.id}
+            vehicleOwnerId={version.created_by ?? null}
+          />
         </div>
 
         <div>

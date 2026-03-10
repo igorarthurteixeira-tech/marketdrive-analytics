@@ -134,6 +134,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
 
   const profileId = forcedProfileId ?? session?.user?.id ?? null
   const isOwnProfile = Boolean(session?.user?.id && profileId === session.user.id)
+  const canManageOwnProfile = isOwnProfile && !forcedProfileId
 
   const [nameInput, setNameInput] = useState("")
   const [usernameInput, setUsernameInput] = useState("")
@@ -326,7 +327,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
       }
 
       if (!row) {
-        setErrorMessage("Nao foi possivel carregar o perfil.")
+        setErrorMessage("Não foi possível carregar o perfil.")
         setProfile(null)
         setLoading(false)
         return
@@ -580,7 +581,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
     ]
 
     let saveOk = false
-    let lastErrorMessage = "Nao foi possivel salvar o perfil."
+    let lastErrorMessage = "Não foi possível salvar o perfil."
 
     for (const candidate of updateAttempts) {
       const res = await supabase
@@ -604,7 +605,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
     }
 
     if (!saveOk) {
-      setErrorMessage(lastErrorMessage || "Nao foi possivel salvar o perfil.")
+      setErrorMessage(lastErrorMessage || "Não foi possível salvar o perfil.")
       setSaving(false)
       return
     }
@@ -691,7 +692,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
     return (
       <div className="min-h-screen max-w-5xl mx-auto px-8 pt-28 pb-16">
         <div className="rounded-2xl border border-gray-200 bg-gray-50 p-8 text-center">
-          <p className="text-gray-700">Voce precisa entrar para ver seu perfil.</p>
+          <p className="text-gray-700">Você precisa entrar para ver seu perfil.</p>
           <Link href="/login" className="mt-4 inline-block text-sm text-black underline underline-offset-4">
             Ir para login
           </Link>
@@ -762,7 +763,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
             ) : null}
           </div>
 
-          {isOwnProfile ? (
+          {canManageOwnProfile ? (
             <div className="mt-4 flex flex-wrap justify-center gap-3">
               {editMode ? (
                 <Link
@@ -799,7 +800,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
                 />
               ))}
               <span className="ml-2 text-sm text-gray-700">
-                {ratingCount > 0 ? `${avgRating.toFixed(1)} (${ratingCount})` : "Sem avaliacoes"}
+                {ratingCount > 0 ? `${avgRating.toFixed(1)} (${ratingCount})` : "Sem avaliações"}
               </span>
             </div>
 
@@ -812,7 +813,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
 
             {!isOwnProfile && session?.user?.id ? (
               <div className="mt-3">
-                <p className="text-xs text-gray-600">Sua avaliacao</p>
+                <p className="text-xs text-gray-600">Sua avaliação</p>
                 <div className="mt-1 flex items-center justify-center gap-1">
                   {Array.from({ length: 5 }).map((_, index) => {
                     const value = index + 1
@@ -870,7 +871,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
           ) : null}
         </div>
 
-        {isOwnProfile && editMode ? (
+        {canManageOwnProfile && editMode ? (
           <form onSubmit={handleSaveProfile} className="space-y-4 mt-6 border-t border-gray-200 pt-6">
             <div className="grid md:grid-cols-2 gap-4">
               <input

@@ -16,6 +16,9 @@ const VERSION_TIERS = [
   "esportivo de luxo",
 ] as const
 
+const FUEL_OPTIONS = ["gasolina", "etanol", "diesel", "gnv", "eletrico", "hibrido"] as const
+type FuelOption = (typeof FUEL_OPTIONS)[number]
+
 type Brand = {
   id: string
   name: string
@@ -79,14 +82,19 @@ export default function NovoCarro() {
   const [year, setYear] = useState("")
   const [engine, setEngine] = useState("")
   const [transmission, setTransmission] = useState("")
+  const [fuelTypes, setFuelTypes] = useState<FuelOption[]>(["gasolina", "etanol"])
   const [powerText, setPowerText] = useState("")
+  const [powerSingleCv, setPowerSingleCv] = useState("")
   const [powerAlcoholCv, setPowerAlcoholCv] = useState("")
   const [powerGasolineCv, setPowerGasolineCv] = useState("")
   const [powerRpm, setPowerRpm] = useState("")
   const [torqueText, setTorqueText] = useState("")
+  const [torqueSingleKgfm, setTorqueSingleKgfm] = useState("")
   const [torqueAlcoholKgfm, setTorqueAlcoholKgfm] = useState("")
   const [torqueGasolineKgfm, setTorqueGasolineKgfm] = useState("")
   const [torqueRpm, setTorqueRpm] = useState("")
+  const [consumptionSingleCity, setConsumptionSingleCity] = useState("")
+  const [consumptionSingleHighway, setConsumptionSingleHighway] = useState("")
   const [consumptionGasCity, setConsumptionGasCity] = useState("")
   const [consumptionGasHighway, setConsumptionGasHighway] = useState("")
   const [consumptionAlcoholCity, setConsumptionAlcoholCity] = useState("")
@@ -177,6 +185,10 @@ export default function NovoCarro() {
     () => vehicles.find((v) => v.id === vehicleId) ?? null,
     [vehicles, vehicleId]
   )
+  const isFlexFuel = useMemo(
+    () => fuelTypes.includes("gasolina") && fuelTypes.includes("etanol"),
+    [fuelTypes]
+  )
 
   const resetMessages = () => {
     setErrorMessage("")
@@ -259,28 +271,47 @@ export default function NovoCarro() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     resetMessages()
-    setLoading(true)
 
     try {
       if (!year || !engine || !transmission || !versionName) {
         throw new Error("Preencha todos os campos da versão.")
       }
+      if (!fuelTypes.length) {
+        throw new Error("Selecione ao menos um combustível para a versão.")
+      }
+
+      const selectedFuelLabel = fuelTypes.length
+        ? fuelTypes.map((fuel) => fuel.charAt(0).toUpperCase() + fuel.slice(1)).join(", ")
+        : "não informado"
+      const confirmation = window.confirm(
+        `Confirmar criação?\n\nModelo: ${name || "não informado"}\nVersão: ${versionName || "não informada"}\nAno: ${year || "não informado"}\nCombustível: ${selectedFuelLabel}`
+      )
+
+      if (!confirmation) {
+        return
+      }
+
+      setLoading(true)
 
       const chronicList = sanitizeList(chronicDefects)
       const pontualList = sanitizeList(pontualDefects)
       const positivesList = sanitizeList(positivePoints)
-      const potenciaAlcool = parseOptionalNumber(powerAlcoholCv)
-      const potenciaGasolina = parseOptionalNumber(powerGasolineCv)
-      const potenciaCv = potenciaAlcool ?? potenciaGasolina ?? null
+      const potenciaSingle = parseOptionalNumber(powerSingleCv)
+      const potenciaAlcool = isFlexFuel ? parseOptionalNumber(powerAlcoholCv) : null
+      const potenciaGasolina = isFlexFuel ? parseOptionalNumber(powerGasolineCv) : null
+      const potenciaCv = potenciaSingle ?? potenciaAlcool ?? potenciaGasolina ?? null
       const potenciaRpm = parseOptionalNumber(powerRpm)
-      const torqueAlcool = parseOptionalNumber(torqueAlcoholKgfm)
-      const torqueGasolina = parseOptionalNumber(torqueGasolineKgfm)
-      const torque = torqueAlcool ?? torqueGasolina ?? null
+      const torqueSingle = parseOptionalNumber(torqueSingleKgfm)
+      const torqueAlcool = isFlexFuel ? parseOptionalNumber(torqueAlcoholKgfm) : null
+      const torqueGasolina = isFlexFuel ? parseOptionalNumber(torqueGasolineKgfm) : null
+      const torque = torqueSingle ?? torqueAlcool ?? torqueGasolina ?? null
       const torqueRefRpm = parseOptionalNumber(torqueRpm)
-      const consumoGasolinaUrbano = parseOptionalNumber(consumptionGasCity)
-      const consumoGasolinaEstrada = parseOptionalNumber(consumptionGasHighway)
-      const consumoEtanolUrbano = parseOptionalNumber(consumptionAlcoholCity)
-      const consumoEtanolEstrada = parseOptionalNumber(consumptionAlcoholHighway)
+      const consumoSingleUrbano = parseOptionalNumber(consumptionSingleCity)
+      const consumoSingleEstrada = parseOptionalNumber(consumptionSingleHighway)
+      const consumoGasolinaUrbano = isFlexFuel ? parseOptionalNumber(consumptionGasCity) : null
+      const consumoGasolinaEstrada = isFlexFuel ? parseOptionalNumber(consumptionGasHighway) : null
+      const consumoEtanolUrbano = isFlexFuel ? parseOptionalNumber(consumptionAlcoholCity) : null
+      const consumoEtanolEstrada = isFlexFuel ? parseOptionalNumber(consumptionAlcoholHighway) : null
       const pesoKg = parseOptionalNumber(weightKg)
       const pesoPotenciaAlcool =
         potenciaAlcool && pesoKg
@@ -348,6 +379,7 @@ export default function NovoCarro() {
             year: Number(year),
             engine,
             transmission,
+            fuel_types: fuelTypes,
             potencia_cv: potenciaCv,
             potencia_texto: powerText.trim() || null,
             potencia_alcool_cv: potenciaAlcool,
@@ -358,6 +390,8 @@ export default function NovoCarro() {
             torque_alcool_kgfm: torqueAlcool,
             torque_gasolina_kgfm: torqueGasolina,
             torque_rpm: torqueRefRpm,
+            consumo_urbano_kml: consumoSingleUrbano,
+            consumo_estrada_kml: consumoSingleEstrada,
             consumo_gasolina_urbano_kml: consumoGasolinaUrbano,
             consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
             consumo_etanol_urbano_kml: consumoEtanolUrbano,
@@ -440,6 +474,7 @@ export default function NovoCarro() {
             year: Number(year),
             engine,
             transmission,
+            fuel_types: fuelTypes,
             potencia_cv: potenciaCv,
             potencia_texto: powerText.trim() || null,
             potencia_alcool_cv: potenciaAlcool,
@@ -450,6 +485,8 @@ export default function NovoCarro() {
             torque_alcool_kgfm: torqueAlcool,
             torque_gasolina_kgfm: torqueGasolina,
             torque_rpm: torqueRefRpm,
+            consumo_urbano_kml: consumoSingleUrbano,
+            consumo_estrada_kml: consumoSingleEstrada,
             consumo_gasolina_urbano_kml: consumoGasolinaUrbano,
             consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
             consumo_etanol_urbano_kml: consumoEtanolUrbano,
@@ -723,6 +760,32 @@ export default function NovoCarro() {
           required
         />
 
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-700">Combustível da versão</p>
+          <div className="flex flex-wrap gap-3">
+            {FUEL_OPTIONS.map((fuel) => (
+              <label key={fuel} className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={fuelTypes.includes(fuel)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setFuelTypes((prev) => Array.from(new Set([...prev, fuel])))
+                    } else {
+                      setFuelTypes((prev) => prev.filter((item) => item !== fuel))
+                    }
+                  }}
+                  className="cursor-pointer"
+                />
+                <span className="capitalize">{fuel}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500">
+            Se selecionar gasolina e etanol, os campos serão separados por combustível.
+          </p>
+        </div>
+
         <h3 className="text-lg font-semibold text-gray-900 mt-2">
           Especificações da versão (opcional)
         </h3>
@@ -738,29 +801,48 @@ export default function NovoCarro() {
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
         />
 
-        <div className="grid sm:grid-cols-3 gap-3">
-          <input
-            type="text"
-            placeholder="Potência E (cv)"
-            value={powerAlcoholCv}
-            onChange={(e) => setPowerAlcoholCv(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Potência G (cv)"
-            value={powerGasolineCv}
-            onChange={(e) => setPowerGasolineCv(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Potência rpm"
-            value={powerRpm}
-            onChange={(e) => setPowerRpm(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-        </div>
+        {isFlexFuel ? (
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              type="text"
+              placeholder="Potência E (cv)"
+              value={powerAlcoholCv}
+              onChange={(e) => setPowerAlcoholCv(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Potência G (cv)"
+              value={powerGasolineCv}
+              onChange={(e) => setPowerGasolineCv(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Potência rpm"
+              value={powerRpm}
+              onChange={(e) => setPowerRpm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder="Potência (cv)"
+              value={powerSingleCv}
+              onChange={(e) => setPowerSingleCv(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Potência rpm"
+              value={powerRpm}
+              onChange={(e) => setPowerRpm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        )}
 
         <input
           type="text"
@@ -770,63 +852,101 @@ export default function NovoCarro() {
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
         />
 
-        <div className="grid sm:grid-cols-3 gap-3">
-          <input
-            type="text"
-            placeholder="Torque E (kgfm)"
-            value={torqueAlcoholKgfm}
-            onChange={(e) => setTorqueAlcoholKgfm(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Torque G (kgfm)"
-            value={torqueGasolineKgfm}
-            onChange={(e) => setTorqueGasolineKgfm(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Torque rpm"
-            value={torqueRpm}
-            onChange={(e) => setTorqueRpm(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-        </div>
+        {isFlexFuel ? (
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              type="text"
+              placeholder="Torque E (kgfm)"
+              value={torqueAlcoholKgfm}
+              onChange={(e) => setTorqueAlcoholKgfm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Torque G (kgfm)"
+              value={torqueGasolineKgfm}
+              onChange={(e) => setTorqueGasolineKgfm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Torque rpm"
+              value={torqueRpm}
+              onChange={(e) => setTorqueRpm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder="Torque (kgfm)"
+              value={torqueSingleKgfm}
+              onChange={(e) => setTorqueSingleKgfm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Torque rpm"
+              value={torqueRpm}
+              onChange={(e) => setTorqueRpm(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        )}
 
         <h4 className="text-base font-semibold text-gray-900 mt-1">
           Consumo (km/l)
         </h4>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <input
-            type="text"
-            placeholder="Gasolina urbano (km/l)"
-            value={consumptionGasCity}
-            onChange={(e) => setConsumptionGasCity(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Gasolina estrada (km/l)"
-            value={consumptionGasHighway}
-            onChange={(e) => setConsumptionGasHighway(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Etanol urbano (km/l)"
-            value={consumptionAlcoholCity}
-            onChange={(e) => setConsumptionAlcoholCity(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-          <input
-            type="text"
-            placeholder="Etanol estrada (km/l)"
-            value={consumptionAlcoholHighway}
-            onChange={(e) => setConsumptionAlcoholHighway(e.target.value)}
-            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          />
-        </div>
+        {isFlexFuel ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder="Gasolina urbano (km/l)"
+              value={consumptionGasCity}
+              onChange={(e) => setConsumptionGasCity(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Gasolina estrada (km/l)"
+              value={consumptionGasHighway}
+              onChange={(e) => setConsumptionGasHighway(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Etanol urbano (km/l)"
+              value={consumptionAlcoholCity}
+              onChange={(e) => setConsumptionAlcoholCity(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Etanol estrada (km/l)"
+              value={consumptionAlcoholHighway}
+              onChange={(e) => setConsumptionAlcoholHighway(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder="Consumo urbano (km/l)"
+              value={consumptionSingleCity}
+              onChange={(e) => setConsumptionSingleCity(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+            <input
+              type="text"
+              placeholder="Consumo estrada (km/l)"
+              value={consumptionSingleHighway}
+              onChange={(e) => setConsumptionSingleHighway(e.target.value)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+            />
+          </div>
+        )}
 
         <input
           type="text"
