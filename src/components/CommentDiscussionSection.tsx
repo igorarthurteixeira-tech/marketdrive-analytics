@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
+import ConfirmActionModal from "@/components/ConfirmActionModal"
 
 type CommentRow = {
   id: string
@@ -54,6 +55,12 @@ type CommentCard = {
 
 type CommentSortMode = "visibility" | "recency"
 const REPLIES_PAGE_SIZE = 16
+
+type PendingDeleteComment = {
+  id: string
+  authorId: string | null
+  mention: string
+} | null
 
 const getInitialSortMode = (vehicleVersionId: string): CommentSortMode => {
   if (typeof window === "undefined") return "visibility"
@@ -141,6 +148,7 @@ export default function CommentDiscussionSection({
   const [savingComment, setSavingComment] = useState(false)
   const [savingReply, setSavingReply] = useState(false)
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
+  const [pendingDeleteComment, setPendingDeleteComment] = useState<PendingDeleteComment>(null)
   const [submittingVoteId, setSubmittingVoteId] = useState<string | null>(null)
   const [threadEnabled, setThreadEnabled] = useState(true)
   const [pinEnabled, setPinEnabled] = useState(true)
@@ -154,6 +162,7 @@ export default function CommentDiscussionSection({
 
   const canInteract = Boolean(session?.user?.id)
   const canPinComments = Boolean(session?.user?.id && vehicleOwnerId && session.user.id === vehicleOwnerId)
+  const canModerateComments = canPinComments
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -365,13 +374,15 @@ export default function CommentDiscussionSection({
 
     const content = quotedPoint ? `${serializeQuote(quotedPoint)}\n${body}` : body
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("vehicle_comments")
       .insert({
         vehicle_version_id: vehicleVersionId,
         content,
         created_by: session?.user?.id,
       })
+      .select("id,content,created_by,created_at,parent_comment_id,reply_to_user_id,is_pinned,pinned_at")
+      .single()
 
     if (error) {
       setErrorMessage(`Falha ao publicar comentário: ${error.message}`)
@@ -381,7 +392,14 @@ export default function CommentDiscussionSection({
 
     setNewComment("")
     setQuotedPoint(null)
-    await fetchData()
+    if (data) {
+      const inserted = data as CommentRow
+      setComments((prev) => [inserted, ...prev])
+      setStats((prev) => ({
+        ...prev,
+        [inserted.id]: { confirmed: 0, denied: 0, userVote: null },
+      }))
+    }
     setSavingComment(false)
   }
 
@@ -420,7 +438,36 @@ export default function CommentDiscussionSection({
       return
     }
 
-    await fetchData()
+    setStats((prev) => {
+      const current = prev[commentId] ?? { confirmed: 0, denied: 0, userVote: null }
+      let confirmed = current.confirmed
+      let denied = current.denied
+      let userVote: boolean | null = current.userVote
+
+      if (current.userVote === isConfirmed) {
+        if (isConfirmed) confirmed = Math.max(0, confirmed - 1)
+        else denied = Math.max(0, denied - 1)
+        userVote = null
+      } else if (current.userVote === null) {
+        if (isConfirmed) confirmed += 1
+        else denied += 1
+        userVote = isConfirmed
+      } else {
+        if (isConfirmed) {
+          denied = Math.max(0, denied - 1)
+          confirmed += 1
+        } else {
+          confirmed = Math.max(0, confirmed - 1)
+          denied += 1
+        }
+        userVote = isConfirmed
+      }
+
+      return {
+        ...prev,
+        [commentId]: { confirmed, denied, userVote },
+      }
+    })
     setSubmittingVoteId(null)
   }
 
@@ -433,20 +480,48 @@ export default function CommentDiscussionSection({
     setDeletingCommentId(commentId)
     setErrorMessage("")
 
-    const { error } = await supabase
-      .from("vehicle_comments")
-      .delete()
-      .eq("id", commentId)
-      .eq("created_by", session.user.id)
+    const childIds = comments
+      .filter((item) => item.parent_comment_id === commentId)
+      .map((item) => item.id)
+    const idsToDelete = [commentId, ...childIds]
 
-    if (error) {
-      setErrorMessage(`Falha ao apagar comentário: ${error.message}`)
+    const request = canModerateComments
+      ? await supabase.from("vehicle_comments").delete().in("id", idsToDelete)
+      : await supabase
+          .from("vehicle_comments")
+          .delete()
+          .eq("id", commentId)
+          .eq("created_by", session.user.id)
+
+    if (request.error) {
+      setErrorMessage(`Falha ao apagar comentário: ${request.error.message}`)
       setDeletingCommentId(null)
       return
     }
 
-    await fetchData()
+    setComments((prev) => prev.filter((item) => !idsToDelete.includes(item.id)))
+    setStats((prev) => {
+      const next = { ...prev }
+      for (const id of idsToDelete) {
+        delete next[id]
+      }
+      return next
+    })
     setDeletingCommentId(null)
+    setPendingDeleteComment(null)
+  }
+
+  const requestDeleteComment = (
+    commentId: string,
+    authorId: string | null,
+    mention: string
+  ) => {
+    if (!session?.user?.id) return
+    if (authorId && authorId !== session.user.id && canModerateComments) {
+      setPendingDeleteComment({ id: commentId, authorId, mention })
+      return
+    }
+    void deleteComment(commentId)
   }
 
   const togglePin = async (rootComment: CommentRow) => {
@@ -485,7 +560,17 @@ export default function CommentDiscussionSection({
     }
 
     setErrorMessage("")
-    await fetchData()
+    setComments((prev) =>
+      prev.map((item) =>
+        item.id === rootComment.id
+          ? {
+              ...item,
+              is_pinned: targetValue,
+              pinned_at: targetValue ? new Date().toISOString() : null,
+            }
+          : item
+      )
+    )
   }
 
   const submitReply = async (e: FormEvent, rootComment: CommentRow) => {
@@ -505,7 +590,7 @@ export default function CommentDiscussionSection({
     setSavingReply(true)
     setErrorMessage("")
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("vehicle_comments")
       .insert({
         vehicle_version_id: vehicleVersionId,
@@ -514,6 +599,8 @@ export default function CommentDiscussionSection({
         parent_comment_id: rootId,
         reply_to_user_id: rootComment.created_by,
       })
+      .select("id,content,created_by,created_at,parent_comment_id,reply_to_user_id,is_pinned,pinned_at")
+      .single()
 
     if (error) {
       setErrorMessage(`Falha ao publicar resposta: ${error.message}`)
@@ -521,8 +608,16 @@ export default function CommentDiscussionSection({
       return
     }
 
+    if (data) {
+      const inserted = data as CommentRow
+      setComments((prev) => [inserted, ...prev])
+      setStats((prev) => ({
+        ...prev,
+        [inserted.id]: { confirmed: 0, denied: 0, userVote: null },
+      }))
+      setExpandedThreads((prev) => ({ ...prev, [rootId]: true }))
+    }
     setReplyDrafts((prev) => ({ ...prev, [rootId]: "" }))
-    await fetchData()
     setSavingReply(false)
   }
 
@@ -797,10 +892,17 @@ export default function CommentDiscussionSection({
                 >
                   Negar ({rootCard.commentStats.denied})
                 </button>
-                {session?.user?.id && rootCard.comment.created_by === session.user.id ? (
+                {session?.user?.id &&
+                (rootCard.comment.created_by === session.user.id || canModerateComments) ? (
                   <button
                     type="button"
-                    onClick={() => deleteComment(rootCard.comment.id)}
+                    onClick={() =>
+                      requestDeleteComment(
+                        rootCard.comment.id,
+                        rootCard.comment.created_by,
+                        toMentionLabel(authorMentions[rootCard.comment.created_by ?? ""] ?? rootCard.authorName)
+                      )
+                    }
                     disabled={deletingCommentId === rootCard.comment.id}
                     className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
@@ -905,10 +1007,20 @@ export default function CommentDiscussionSection({
                               >
                                 Negar ({reply.commentStats.denied})
                               </button>
-                              {session?.user?.id && reply.comment.created_by === session.user.id ? (
+                              {session?.user?.id &&
+                              (reply.comment.created_by === session.user.id ||
+                                canModerateComments) ? (
                                 <button
                                   type="button"
-                                  onClick={() => deleteComment(reply.comment.id)}
+                                  onClick={() =>
+                                    requestDeleteComment(
+                                      reply.comment.id,
+                                      reply.comment.created_by,
+                                      toMentionLabel(
+                                        authorMentions[reply.comment.created_by ?? ""] ?? reply.authorName
+                                      )
+                                    )
+                                  }
                                   disabled={deletingCommentId === reply.comment.id}
                                   className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
@@ -952,6 +1064,21 @@ export default function CommentDiscussionSection({
           </section>
         )
       })}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeleteComment)}
+        message={`Este comentário foi feito por "${pendingDeleteComment?.mention ?? "@user"}" e não pode ser revertido, tem certeza que deseja continuar?`}
+        confirmLabel="Excluir comentário"
+        loading={Boolean(
+          pendingDeleteComment && deletingCommentId === pendingDeleteComment.id
+        )}
+        onCancel={() => setPendingDeleteComment(null)}
+        onConfirm={() => {
+          if (!pendingDeleteComment) return
+          void deleteComment(pendingDeleteComment.id)
+        }}
+      />
     </div>
   )
 }
+

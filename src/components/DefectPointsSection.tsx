@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
+import ConfirmActionModal from "@/components/ConfirmActionModal"
 
 type DefectPoint = {
   id: string
@@ -29,7 +30,22 @@ type ProfileRow = {
   name: string | null
   username?: string | null
   avatar_url?: string | null
+  plan?: string | null
 }
+
+type SuggestionRow = {
+  id: string
+  content: string
+  requester_user_id: string
+  status: "pending" | "approved" | "rejected"
+  created_at: string
+}
+
+type PendingDeletePoint = {
+  id: string
+  authorId: string | null
+  mention: string
+} | null
 
 const toMentionLabel = (username?: string | null, name?: string | null) => {
   const cleanUsername = (username ?? "").trim().replace(/^@+/, "")
@@ -56,11 +72,28 @@ export default function DefectPointsSection({
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
   const [submittingVoteId, setSubmittingVoteId] = useState<string | null>(null)
+  const [deletingPointId, setDeletingPointId] = useState<string | null>(null)
+  const [pendingDeletePoint, setPendingDeletePoint] = useState<PendingDeletePoint>(null)
   const [voteTableAvailable, setVoteTableAvailable] = useState(true)
+
+  const [currentPlan, setCurrentPlan] = useState<string | null>(null)
+  const [suggestionText, setSuggestionText] = useState("")
+  const [submittingSuggestion, setSubmittingSuggestion] = useState(false)
+  const [processingSuggestionId, setProcessingSuggestionId] = useState<string | null>(null)
+  const [pendingSuggestions, setPendingSuggestions] = useState<SuggestionRow[]>([])
+  const [suggestionAuthorNames, setSuggestionAuthorNames] = useState<Record<string, string>>({})
+  const [suggestionAuthorAvatars, setSuggestionAuthorAvatars] = useState<Record<string, string | null>>({})
 
   const canVote = Boolean(session?.user?.id)
   const minSeverity = mode === "chronic" ? 2 : 0
   const maxSeverity = mode === "chronic" ? 10 : 1
+  const pointType = mode === "chronic" ? "defect_chronic" : "defect_pontual"
+
+  const isOwner = Boolean(session?.user?.id && vehicleOwnerId && session.user.id === vehicleOwnerId)
+  const canSuggest =
+    Boolean(session?.user?.id) &&
+    !isOwner &&
+    (currentPlan === "entusiasta" || currentPlan === "profissional")
 
   const quoteInComments = (
     pointId: string,
@@ -94,9 +127,7 @@ export default function DefectPointsSection({
     const pointsData = (defects as DefectPoint[]) ?? []
     setPoints(pointsData)
 
-    const authorIds = Array.from(
-      new Set(pointsData.map((item) => item.created_by).filter(Boolean))
-    ) as string[]
+    const authorIds = Array.from(new Set(pointsData.map((item) => item.created_by).filter(Boolean))) as string[]
 
     if (authorIds.length) {
       const { data: profilesData } = await supabase
@@ -133,7 +164,7 @@ export default function DefectPointsSection({
           setVoteTableAvailable(false)
           setStats({})
         } else {
-          setErrorMessage("Falha ao carregar avaliaÃ§Ãµes dos defeitos.")
+          setErrorMessage("Falha ao carregar avaliações dos defeitos.")
         }
       } else {
         setVoteTableAvailable(true)
@@ -143,11 +174,8 @@ export default function DefectPointsSection({
             nextStats[row.defect_id] = { confirmed: 0, denied: 0, userVote: null }
           }
 
-          if (row.is_confirmed) {
-            nextStats[row.defect_id].confirmed += 1
-          } else {
-            nextStats[row.defect_id].denied += 1
-          }
+          if (row.is_confirmed) nextStats[row.defect_id].confirmed += 1
+          else nextStats[row.defect_id].denied += 1
 
           if (session?.user?.id && row.user_id === session.user.id) {
             nextStats[row.defect_id].userVote = row.is_confirmed
@@ -163,12 +191,71 @@ export default function DefectPointsSection({
     setLoading(false)
   }, [vehicleVersionId, minSeverity, maxSeverity, session])
 
+  const fetchPlan = useCallback(async () => {
+    if (!session?.user?.id) {
+      setCurrentPlan(null)
+      return
+    }
+
+    const { data } = await supabase
+      .from("profiles")
+      .select("plan")
+      .eq("id", session.user.id)
+      .single()
+
+    setCurrentPlan((data?.plan as string | null) ?? null)
+  }, [session])
+
+  const fetchSuggestions = useCallback(async () => {
+    if (!session?.user?.id || !isOwner) {
+      setPendingSuggestions([])
+      return
+    }
+
+    const { data, error } = await supabase
+      .from("vehicle_point_suggestions")
+      .select("id,content,requester_user_id,status,created_at")
+      .eq("vehicle_version_id", vehicleVersionId)
+      .eq("point_type", pointType)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+
+    if (error) return
+
+    const rows = (data as SuggestionRow[] | null) ?? []
+    setPendingSuggestions(rows)
+
+    const requesterIds = Array.from(new Set(rows.map((row) => row.requester_user_id)))
+    if (!requesterIds.length) {
+      setSuggestionAuthorNames({})
+      setSuggestionAuthorAvatars({})
+      return
+    }
+
+    const profilesRes = await supabase
+      .from("profiles")
+      .select("id,name,avatar_url")
+      .in("id", requesterIds)
+
+    const nameMap: Record<string, string> = {}
+    const avatarMap: Record<string, string | null> = {}
+    for (const row of (profilesRes.data as ProfileRow[] | null) ?? []) {
+      nameMap[row.id] = row.name ?? "Usuário"
+      avatarMap[row.id] = row.avatar_url ?? null
+    }
+
+    setSuggestionAuthorNames(nameMap)
+    setSuggestionAuthorAvatars(avatarMap)
+  }, [isOwner, pointType, session?.user?.id, vehicleVersionId])
+
   useEffect(() => {
     const timer = setTimeout(() => {
       void fetchData()
+      void fetchPlan()
+      void fetchSuggestions()
     }, 0)
     return () => clearTimeout(timer)
-  }, [fetchData])
+  }, [fetchData, fetchPlan, fetchSuggestions])
 
   const vote = async (defectId: string, isConfirmed: boolean) => {
     if (!session?.user?.id) {
@@ -239,6 +326,137 @@ export default function DefectPointsSection({
     setSubmittingVoteId(null)
   }
 
+  const submitSuggestion = async () => {
+    if (!session?.user?.id) {
+      setErrorMessage("Faça login para sugerir.")
+      return
+    }
+    if (!vehicleOwnerId || session.user.id === vehicleOwnerId) return
+    if (!canSuggest) {
+      setErrorMessage("Disponível para planos Entusiasta e Profissional.")
+      return
+    }
+
+    const content = suggestionText.trim()
+    if (!content) return
+
+    setSubmittingSuggestion(true)
+    setErrorMessage("")
+
+    const { error } = await supabase
+      .from("vehicle_point_suggestions")
+      .insert({
+        vehicle_version_id: vehicleVersionId,
+        point_type: pointType,
+        content,
+        requester_user_id: session.user.id,
+        owner_user_id: vehicleOwnerId,
+        status: "pending",
+      })
+
+    if (error) {
+      setErrorMessage(`Falha ao enviar sugestão: ${error.message}`)
+      setSubmittingSuggestion(false)
+      return
+    }
+
+    setSuggestionText("")
+    setSubmittingSuggestion(false)
+  }
+
+  const reviewSuggestion = async (
+    suggestion: SuggestionRow,
+    decision: "approved" | "rejected"
+  ) => {
+    if (!isOwner || !session?.user?.id) return
+
+    setProcessingSuggestionId(suggestion.id)
+    setErrorMessage("")
+
+    if (decision === "approved") {
+      const insertDefect = await supabase.from("defects").insert({
+        vehicle_version_id: vehicleVersionId,
+        title: suggestion.content,
+        severity: mode === "chronic" ? 2 : 1,
+        created_by: suggestion.requester_user_id,
+      })
+
+      if (insertDefect.error) {
+        setErrorMessage(`Falha ao aprovar sugestão: ${insertDefect.error.message}`)
+        setProcessingSuggestionId(null)
+        return
+      }
+    }
+
+    const updateReq = await supabase
+      .from("vehicle_point_suggestions")
+      .update({
+        status: decision,
+        reviewed_by: session.user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", suggestion.id)
+
+    if (updateReq.error) {
+      setErrorMessage(`Falha ao atualizar sugestão: ${updateReq.error.message}`)
+      setProcessingSuggestionId(null)
+      return
+    }
+
+    await fetchData()
+    await fetchSuggestions()
+    setProcessingSuggestionId(null)
+  }
+
+  const deletePoint = async (pointId: string, pointAuthorId: string | null) => {
+    if (!session?.user?.id) {
+      setErrorMessage("Faça login para apagar este item.")
+      return
+    }
+
+    const canDeleteAnyPoint = isOwner
+    const canDeleteOwnPoint = pointAuthorId === session.user.id
+    if (!canDeleteAnyPoint && !canDeleteOwnPoint) {
+      setErrorMessage("Você não tem permissão para apagar este item.")
+      return
+    }
+
+    setDeletingPointId(pointId)
+    setErrorMessage("")
+
+    const request = canDeleteAnyPoint
+      ? await supabase.from("defects").delete().eq("id", pointId)
+      : await supabase
+          .from("defects")
+          .delete()
+          .eq("id", pointId)
+          .eq("created_by", session.user.id)
+
+    if (request.error) {
+      setErrorMessage(`Falha ao apagar item: ${request.error.message}`)
+      setDeletingPointId(null)
+      return
+    }
+
+    setPoints((prev) => prev.filter((item) => item.id !== pointId))
+    setStats((prev) => {
+      const next = { ...prev }
+      delete next[pointId]
+      return next
+    })
+    setDeletingPointId(null)
+    setPendingDeletePoint(null)
+  }
+
+  const requestDeletePoint = (pointId: string, pointAuthorId: string | null, mention: string) => {
+    if (!session?.user?.id) return
+    if (pointAuthorId && pointAuthorId !== session.user.id && isOwner) {
+      setPendingDeletePoint({ id: pointId, authorId: pointAuthorId, mention })
+      return
+    }
+    void deletePoint(pointId, pointAuthorId)
+  }
+
   const cards = useMemo(() => {
     return points.map((point) => {
       const pointStats = stats[point.id] ?? { confirmed: 0, denied: 0, userVote: null }
@@ -267,6 +485,72 @@ export default function DefectPointsSection({
   return (
     <div className="space-y-4">
       {errorMessage ? <p className="text-sm text-red-600">{errorMessage}</p> : null}
+
+      {canSuggest ? (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 space-y-2">
+          <p className="text-sm font-medium text-blue-900">
+            {mode === "chronic" ? "Sugerir defeito crônico" : "Sugerir defeito pontual"}
+          </p>
+          <textarea
+            rows={2}
+            value={suggestionText}
+            onChange={(e) => setSuggestionText(e.target.value)}
+            placeholder="Descreva o defeito que você quer adicionar"
+            className="w-full rounded-lg border border-blue-200 bg-white p-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => void submitSuggestion()}
+            disabled={submittingSuggestion || !suggestionText.trim()}
+            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-60"
+          >
+            {submittingSuggestion ? "Enviando..." : "Enviar pedido"}
+          </button>
+        </div>
+      ) : null}
+
+      {Boolean(session?.user?.id && !isOwner && !canSuggest) ? (
+        <p className="text-xs text-gray-500">
+          Para enviar sugestões, é necessário plano Entusiasta ou Profissional.
+        </p>
+      ) : null}
+
+      {isOwner && pendingSuggestions.length ? (
+        <div className="space-y-3">
+          {pendingSuggestions.map((suggestion) => (
+            <article key={suggestion.id} className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+              <p className="text-xs font-semibold text-amber-800 mb-2">Pedido pendente</p>
+              <div className="mb-2">
+                <UserIdentityBadge
+                  name={suggestionAuthorNames[suggestion.requester_user_id] ?? "Usuário"}
+                  profileId={suggestion.requester_user_id}
+                  avatarUrl={suggestionAuthorAvatars[suggestion.requester_user_id] ?? null}
+                  size="xs"
+                />
+              </div>
+              <p className="text-sm text-gray-900">{suggestion.content}</p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void reviewSuggestion(suggestion, "approved")}
+                  disabled={processingSuggestionId === suggestion.id}
+                  className="px-3 py-1.5 rounded-lg border border-green-300 text-green-700 text-sm hover:bg-green-100 disabled:opacity-60"
+                >
+                  Aceitar pedido
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void reviewSuggestion(suggestion, "rejected")}
+                  disabled={processingSuggestionId === suggestion.id}
+                  className="px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-sm hover:bg-red-100 disabled:opacity-60"
+                >
+                  Negar pedido
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
 
       {!cards.length ? <p className="text-gray-600">Nenhum item cadastrado para esta versão.</p> : null}
 
@@ -328,6 +612,20 @@ export default function DefectPointsSection({
                 >
                   Citar nos comentários
                 </button>
+
+                {session?.user?.id &&
+                (isOwner || point.created_by === session.user.id) ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      requestDeletePoint(point.id, point.created_by, authorMention)
+                    }
+                    disabled={deletingPointId === point.id}
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {deletingPointId === point.id ? "Apagando..." : "Apagar"}
+                  </button>
+                ) : null}
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
@@ -353,12 +651,36 @@ export default function DefectPointsSection({
               >
                 Citar nos comentários
               </button>
+
+              {session?.user?.id &&
+              (isOwner || point.created_by === session.user.id) ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    requestDeletePoint(point.id, point.created_by, authorMention)
+                  }
+                  disabled={deletingPointId === point.id}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-sm hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {deletingPointId === point.id ? "Apagando..." : "Apagar"}
+                </button>
+              ) : null}
             </div>
           )}
         </article>
       ))}
+
+      <ConfirmActionModal
+        open={Boolean(pendingDeletePoint)}
+        message={`Este item foi feito por "${pendingDeletePoint?.mention ?? "@user"}" e não pode ser revertido, tem certeza que deseja continuar?`}
+        confirmLabel="Excluir item"
+        loading={Boolean(pendingDeletePoint && deletingPointId === pendingDeletePoint.id)}
+        onCancel={() => setPendingDeletePoint(null)}
+        onConfirm={() => {
+          if (!pendingDeletePoint) return
+          void deletePoint(pendingDeletePoint.id, pendingDeletePoint.authorId)
+        }}
+      />
     </div>
   )
 }
-
-

@@ -1282,6 +1282,17 @@ export default function Header() {
     }
   }
 
+  const scrollToShortcut = (id: string) => {
+    if (typeof window === "undefined") return
+    const target = document.getElementById(id)
+    if (!target) return
+
+    const headerHeight = 76
+    const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight
+    window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" })
+    setActiveSection(id)
+  }
+
   return (
     <header
       className={`fixed top-0 left-0 w-full z-50 backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
@@ -1317,9 +1328,10 @@ export default function Header() {
             <div className="hidden lg:flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.08em]">
               {shortcuts.map((shortcut) => (
                 pathname === "/" ? (
-                  <a
+                  <button
                     key={shortcut.id}
-                    href={`#${shortcut.id}`}
+                    type="button"
+                    onClick={() => scrollToShortcut(shortcut.id)}
                     className={`transition-colors ${
                       activeSection === shortcut.id
                         ? "text-black"
@@ -1327,7 +1339,7 @@ export default function Header() {
                     }`}
                   >
                     {shortcut.label}
-                  </a>
+                  </button>
                 ) : (
                   <Link
                     key={shortcut.id}

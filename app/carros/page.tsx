@@ -3,10 +3,13 @@
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import VehicleCardImage from "@/components/VehicleCardImage"
 import StarRating from "@/components/ui/StarRating"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
+
+const VEHICLES_CACHE_KEY = "carros:vehicles:v1"
+const FILTERS_CACHE_KEY = "carros:filters:v1"
 
 type EnrichedVehicle = {
   id: string
@@ -78,17 +81,71 @@ type ProfileRow = {
 export default function CarrosPage() {
   const { session } = useAuth()
 
-  const [vehicles, setVehicles] = useState<EnrichedVehicle[]>([])
-  const [loadingVehicles, setLoadingVehicles] = useState(true)
+  const [vehicles, setVehicles] = useState<EnrichedVehicle[]>(() => {
+    if (typeof window === "undefined") return []
+    const raw = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
+    if (!raw) return []
+    try {
+      const parsed = JSON.parse(raw) as EnrichedVehicle[]
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      window.sessionStorage.removeItem(VEHICLES_CACHE_KEY)
+      return []
+    }
+  })
+  const [loadingVehicles, setLoadingVehicles] = useState(() => {
+    if (typeof window === "undefined") return true
+    const raw = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
+    if (!raw) return true
+    try {
+      const parsed = JSON.parse(raw) as EnrichedVehicle[]
+      return !Array.isArray(parsed) || parsed.length === 0
+    } catch {
+      return true
+    }
+  })
   const [fetchError, setFetchError] = useState("")
   const [plan, setPlan] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedBrand, setSelectedBrand] = useState("all")
-  const [selectedYear, setSelectedYear] = useState("all")
+  const [searchTerm, setSearchTerm] = useState(() => {
+    if (typeof window === "undefined") return ""
+    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
+    if (!raw) return ""
+    try {
+      const parsed = JSON.parse(raw) as { searchTerm?: string }
+      return typeof parsed.searchTerm === "string" ? parsed.searchTerm : ""
+    } catch {
+      return ""
+    }
+  })
+  const [selectedBrand, setSelectedBrand] = useState(() => {
+    if (typeof window === "undefined") return "all"
+    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
+    if (!raw) return "all"
+    try {
+      const parsed = JSON.parse(raw) as { selectedBrand?: string }
+      return typeof parsed.selectedBrand === "string" ? parsed.selectedBrand : "all"
+    } catch {
+      return "all"
+    }
+  })
+  const [selectedYear, setSelectedYear] = useState(() => {
+    if (typeof window === "undefined") return "all"
+    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
+    if (!raw) return "all"
+    try {
+      const parsed = JSON.parse(raw) as { selectedYear?: string }
+      return typeof parsed.selectedYear === "string" ? parsed.selectedYear : "all"
+    } catch {
+      return "all"
+    }
+  })
+  const hadVehiclesCacheOnLoad = useRef(vehicles.length > 0)
 
   useEffect(() => {
+    const hasCachedVehicles = hadVehiclesCacheOnLoad.current
+
     const fetchVehicles = async () => {
-      setLoadingVehicles(true)
+      if (!hasCachedVehicles) setLoadingVehicles(true)
       setFetchError("")
 
       const fullSelect = `
@@ -287,11 +344,22 @@ export default function CarrosPage() {
       })
 
       setVehicles(enriched)
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(VEHICLES_CACHE_KEY, JSON.stringify(enriched))
+      }
       setLoadingVehicles(false)
     }
 
-    fetchVehicles()
+    void fetchVehicles()
   }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    window.sessionStorage.setItem(
+      FILTERS_CACHE_KEY,
+      JSON.stringify({ searchTerm, selectedBrand, selectedYear })
+    )
+  }, [searchTerm, selectedBrand, selectedYear])
 
   useEffect(() => {
     const fetchPlan = async () => {
