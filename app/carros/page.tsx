@@ -11,8 +11,6 @@ import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 const VEHICLES_CACHE_KEY = "carros:vehicles:v1"
 const FILTERS_CACHE_KEY = "carros:filters:v1"
-const VEHICLE_STORAGE_URL =
-  "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
 
 type EnrichedVehicle = {
   id: string
@@ -107,76 +105,54 @@ const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) 
   return slug ? `/brands/${slug}.png` : null
 }
 
-const toVehicleThumbSrc = (value: string | null | undefined) => {
-  if (!value) return null
-  const raw = value.trim()
-  if (!raw) return null
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
-  return `${VEHICLE_STORAGE_URL}${raw}`
-}
-
 export default function CarrosPage() {
   const { session } = useAuth()
 
-  const [vehicles, setVehicles] = useState<EnrichedVehicle[]>(() => {
-    if (typeof window === "undefined") return []
-    const raw = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
-    if (!raw) return []
-    try {
-      const parsed = JSON.parse(raw) as EnrichedVehicle[]
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      window.sessionStorage.removeItem(VEHICLES_CACHE_KEY)
-      return []
-    }
-  })
-  const [loadingVehicles, setLoadingVehicles] = useState(() => {
-    if (typeof window === "undefined") return true
-    const raw = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
-    if (!raw) return true
-    try {
-      const parsed = JSON.parse(raw) as EnrichedVehicle[]
-      return !Array.isArray(parsed) || parsed.length === 0
-    } catch {
-      return true
-    }
-  })
+  const [vehicles, setVehicles] = useState<EnrichedVehicle[]>([])
+  const [loadingVehicles, setLoadingVehicles] = useState(true)
   const [fetchError, setFetchError] = useState("")
   const [plan, setPlan] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState(() => {
-    if (typeof window === "undefined") return ""
-    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
-    if (!raw) return ""
-    try {
-      const parsed = JSON.parse(raw) as { searchTerm?: string }
-      return typeof parsed.searchTerm === "string" ? parsed.searchTerm : ""
-    } catch {
-      return ""
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedBrand, setSelectedBrand] = useState("all")
+  const [selectedYear, setSelectedYear] = useState("all")
+  const hadVehiclesCacheOnLoad = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    let hasVehiclesCache = false
+    const rawVehicles = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
+    if (rawVehicles) {
+      try {
+        const parsed = JSON.parse(rawVehicles) as EnrichedVehicle[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setVehicles(parsed)
+          setLoadingVehicles(false)
+          hasVehiclesCache = true
+        }
+      } catch {
+        window.sessionStorage.removeItem(VEHICLES_CACHE_KEY)
+      }
     }
-  })
-  const [selectedBrand, setSelectedBrand] = useState(() => {
-    if (typeof window === "undefined") return "all"
-    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
-    if (!raw) return "all"
-    try {
-      const parsed = JSON.parse(raw) as { selectedBrand?: string }
-      return typeof parsed.selectedBrand === "string" ? parsed.selectedBrand : "all"
-    } catch {
-      return "all"
+
+    const rawFilters = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
+    if (rawFilters) {
+      try {
+        const parsed = JSON.parse(rawFilters) as {
+          searchTerm?: string
+          selectedBrand?: string
+          selectedYear?: string
+        }
+        if (typeof parsed.searchTerm === "string") setSearchTerm(parsed.searchTerm)
+        if (typeof parsed.selectedBrand === "string") setSelectedBrand(parsed.selectedBrand)
+        if (typeof parsed.selectedYear === "string") setSelectedYear(parsed.selectedYear)
+      } catch {
+        window.sessionStorage.removeItem(FILTERS_CACHE_KEY)
+      }
     }
-  })
-  const [selectedYear, setSelectedYear] = useState(() => {
-    if (typeof window === "undefined") return "all"
-    const raw = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
-    if (!raw) return "all"
-    try {
-      const parsed = JSON.parse(raw) as { selectedYear?: string }
-      return typeof parsed.selectedYear === "string" ? parsed.selectedYear : "all"
-    } catch {
-      return "all"
-    }
-  })
-  const hadVehiclesCacheOnLoad = useRef(vehicles.length > 0)
+
+    hadVehiclesCacheOnLoad.current = hasVehiclesCache
+  }, [])
 
   useEffect(() => {
     const hasCachedVehicles = hadVehiclesCacheOnLoad.current
@@ -554,14 +530,6 @@ export default function CarrosPage() {
 
               <p className="text-gray-500 text-sm mt-2 transition-colors duration-300 group-hover:text-gray-600">
                 <span className="inline-flex items-center gap-1.5">
-                  {toVehicleThumbSrc(version.image_url) ? (
-                    <img
-                      src={toVehicleThumbSrc(version.image_url) ?? ""}
-                      alt={`Miniatura ${version.modelName}`}
-                      className="h-4 w-6 rounded-sm object-cover shrink-0"
-                      loading="lazy"
-                    />
-                  ) : null}
                   <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
                   <span>{version.brandName}</span>
                 </span>{" "}

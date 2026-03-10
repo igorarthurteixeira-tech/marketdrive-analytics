@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useAuth } from "@/components/AuthProvider"
+import BrandLogo from "@/components/BrandLogo"
 import { supabase } from "@/lib/supabaseClient"
 import { useParams, useRouter } from "next/navigation"
 import Image from "next/image"
@@ -24,6 +25,7 @@ type FuelOption = (typeof FUEL_OPTIONS)[number]
 type Brand = {
   id: string
   name: string
+  logo_path?: string | null
 }
 
 type EditableItem = {
@@ -111,6 +113,16 @@ function generateVersionSlug(
   return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${year}`
 }
 
+function toBrandLogoSrc(brand: Brand | null) {
+  if (!brand) return null
+  const raw = brand.logo_path?.trim()
+  if (raw) {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+    return `/brands/${raw}`
+  }
+  return `/brands/${normalize(brand.name)}.png`
+}
+
 export default function Page() {
   const { session, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -125,6 +137,11 @@ export default function Page() {
   const [versionAuthorId, setVersionAuthorId] = useState<string | null>(null)
 
   const [brandId, setBrandId] = useState("")
+  const [selectedBrandMeta, setSelectedBrandMeta] = useState<Brand | null>(null)
+  const [brandDropdownOpen, setBrandDropdownOpen] = useState(false)
+  const [brandSearch, setBrandSearch] = useState("")
+  const [searchingBrands, setSearchingBrands] = useState(false)
+  const brandDropdownRef = useRef<HTMLDivElement | null>(null)
   const [name, setName] = useState("")
   const [versionName, setVersionName] = useState("")
   const [versionTier, setVersionTier] = useState<(typeof VERSION_TIERS)[number]>("intermediaria")
@@ -201,17 +218,46 @@ export default function Page() {
   }, [session, authLoading, router])
 
   useEffect(() => {
-    const fetchBrands = async () => {
-      const { data } = await supabase
-        .from("brands")
-        .select("id,name")
-        .order("name")
+    let cancelled = false
 
-      if (data) setBrands(data as Brand[])
+    const term = brandSearch.trim()
+    if (term.length < 3) {
+      setBrands([])
+      setSearchingBrands(false)
+      return
     }
 
-    fetchBrands()
-  }, [])
+    setSearchingBrands(true)
+    const timer = window.setTimeout(async () => {
+      const { data } = await supabase
+        .from("brands")
+        .select("id,name,logo_path")
+        .ilike("name", `%${term}%`)
+        .order("name")
+        .limit(40)
+
+      if (cancelled) return
+      setBrands((data as Brand[] | null) ?? [])
+      setSearchingBrands(false)
+    }, 260)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [brandSearch])
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!brandDropdownOpen) return
+      const target = event.target as Node | null
+      if (brandDropdownRef.current && target && !brandDropdownRef.current.contains(target)) {
+        setBrandDropdownOpen(false)
+      }
+    }
+    window.addEventListener("mousedown", handlePointerDown)
+    return () => window.removeEventListener("mousedown", handlePointerDown)
+  }, [brandDropdownOpen])
 
   useEffect(() => {
     const fetchCurrentData = async () => {
@@ -320,6 +366,16 @@ export default function Page() {
       setVehicleId(typedVersion.vehicle_id)
       setVersionAuthorId(typedVersion.created_by ?? null)
       setBrandId(vehicleData?.brand_id ?? "")
+      if (vehicleData?.brand_id) {
+        const brandRes = await supabase
+          .from("brands")
+          .select("id,name,logo_path")
+          .eq("id", vehicleData.brand_id)
+          .single()
+        if (brandRes.data) {
+          setSelectedBrandMeta(brandRes.data as Brand)
+        }
+      }
       setName(vehicleData?.name ?? "")
       setVersionName(typedVersion.version_name ?? "")
       setVersionTier((typedVersion.version_tier ?? "intermediaria") as (typeof VERSION_TIERS)[number])
@@ -442,10 +498,11 @@ export default function Page() {
     }
   }, [imagePreview, isObjectPreview])
 
-  const selectedBrand = useMemo(
-    () => brands.find((brand) => brand.id === brandId) ?? null,
-    [brands, brandId]
-  )
+  const selectedBrand = useMemo(() => {
+    if (selectedBrandMeta && selectedBrandMeta.id === brandId) return selectedBrandMeta
+    return brands.find((brand) => brand.id === brandId) ?? selectedBrandMeta
+  }, [brands, brandId, selectedBrandMeta])
+  const hasMinimumBrandSearch = useMemo(() => brandSearch.trim().length >= 3, [brandSearch])
   const isVersionAuthor = Boolean(session?.user?.id && versionAuthorId === session.user.id)
   const isFlexFuel = useMemo(
     () => fuelTypes.includes("gasolina") && fuelTypes.includes("etanol"),
@@ -899,19 +956,69 @@ export default function Page() {
             : "Você não é o autor. As alterações serão enviadas para aprovação do autor."}
         </div>
 
-        <select
-          value={brandId}
-          onChange={(e) => setBrandId(e.target.value)}
-          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
-          required
-        >
-          <option value="">Selecione a marca</option>
-          {brands.map((brand) => (
-            <option key={brand.id} value={brand.id}>
-              {brand.name}
-            </option>
-          ))}
-        </select>
+        <div ref={brandDropdownRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setBrandDropdownOpen((prev) => !prev)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50 text-left flex items-center justify-between gap-3"
+          >
+            <span className="inline-flex items-center gap-2 text-sm text-gray-800">
+              {selectedBrand ? (
+                <BrandLogo
+                  src={toBrandLogoSrc(selectedBrand)}
+                  brandName={selectedBrand.name}
+                  className="h-7 w-7 shrink-0"
+                />
+              ) : null}
+              {selectedBrand?.name ?? "Selecione a marca"}
+            </span>
+            <span className="text-xs text-gray-500">{brandDropdownOpen ? "▲" : "▼"}</span>
+          </button>
+
+          {brandDropdownOpen ? (
+            <div className="absolute z-30 mt-2 w-full rounded-lg border border-gray-200 bg-white shadow-lg p-2">
+              <input
+                type="text"
+                value={brandSearch}
+                onChange={(e) => setBrandSearch(e.target.value)}
+                placeholder="Digite ao menos 3 letras..."
+                className="w-full border border-gray-300 p-2 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+              />
+              <div className="mt-2 max-h-56 overflow-y-auto">
+                {!hasMinimumBrandSearch ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">
+                    Digite 3 ou mais caracteres para buscar.
+                  </p>
+                ) : searchingBrands ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">Buscando marcas...</p>
+                ) : brands.map((brand) => (
+                  <button
+                    key={brand.id}
+                    type="button"
+                    onClick={() => {
+                      setBrandId(brand.id)
+                      setSelectedBrandMeta(brand)
+                      setBrandDropdownOpen(false)
+                    }}
+                    className={`w-full px-2 py-2 rounded-md text-left text-sm flex items-center gap-2 hover:bg-gray-100 transition-colors ${
+                      brand.id === brandId ? "bg-gray-100" : ""
+                    }`}
+                  >
+                    <BrandLogo
+                      src={toBrandLogoSrc(brand)}
+                      brandName={brand.name}
+                      className="h-7 w-7 shrink-0"
+                    />
+                    <span>{brand.name}</span>
+                  </button>
+                ))}
+                {hasMinimumBrandSearch && !searchingBrands && !brands.length ? (
+                  <p className="px-2 py-2 text-sm text-gray-500">Nenhuma marca encontrada.</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         <input
           type="text"

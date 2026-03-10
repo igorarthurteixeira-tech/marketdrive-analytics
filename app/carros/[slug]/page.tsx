@@ -6,6 +6,7 @@ import PositivePointsSection from "@/components/PositivePointsSection"
 import CommentDiscussionSection from "@/components/CommentDiscussionSection"
 import VersionRatingSection from "@/components/VersionRatingSection"
 import DefectPointsSection from "@/components/DefectPointsSection"
+import BrandLogo from "@/components/BrandLogo"
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -53,12 +54,18 @@ type VersionDetail = {
     | {
         name: string | null
         image_url: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }[]
     | {
         name: string | null
         image_url: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }
     | null
 }
@@ -67,6 +74,25 @@ type SpecItem = {
   label: string
   value: unknown
   suffix?: string
+}
+
+const toBrandSlug = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) => {
+  if (logoPath && logoPath.trim()) {
+    const raw = logoPath.trim()
+    return raw.startsWith("http://") || raw.startsWith("https://") ? raw : `/brands/${raw}`
+  }
+  if (!brandName) return null
+  const slug = toBrandSlug(brandName)
+  return slug ? `/brands/${slug}.png` : null
 }
 
 export default async function Page({
@@ -117,7 +143,7 @@ export default async function Page({
       vehicles (
         name,
         image_url,
-        brands ( name )
+        brands ( name, logo_path )
       )
     `
 
@@ -149,7 +175,7 @@ export default async function Page({
       vehicles (
         name,
         image_url,
-        brands ( name )
+        brands ( name, logo_path )
       )
     `
 
@@ -184,6 +210,7 @@ export default async function Page({
     : vehicleData?.brands
 
   const brandName = brandData?.name ?? ""
+  const brandLogoUrl = toBrandLogoSrc(brandData?.logo_path, brandName)
   const modelName = vehicleData?.name ?? ""
   const imagePath = version.image_url ?? vehicleData?.image_url ?? ""
   const imageVersion = query.v ? encodeURIComponent(query.v) : ""
@@ -363,17 +390,7 @@ export default async function Page({
         </div>
         <p className="text-gray-600 mb-4">{version.version_tier}</p>
         <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
-          {imagePath ? (
-            <div className="relative h-6 w-10 overflow-hidden rounded-sm border border-gray-200 bg-gray-100">
-              <Image
-                src={imageSrc}
-                alt={`Miniatura ${modelName}`}
-                fill
-                sizes="40px"
-                className="object-cover"
-              />
-            </div>
-          ) : null}
+          <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
           <span>{brandName}</span>
         </div>
       </section>
