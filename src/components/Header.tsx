@@ -171,6 +171,7 @@ export default function Header() {
   const [profileName, setProfileName] = useState<string | null>(null)
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null)
   const [profileUsername, setProfileUsername] = useState<string | null>(null)
+  const [profilePlan, setProfilePlan] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -282,19 +283,20 @@ export default function Header() {
         setProfileName(null)
         setProfileAvatar(null)
         setProfileUsername(null)
+        setProfilePlan(null)
         return
       }
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("name,avatar_url,username")
+        .select("name,avatar_url,username,plan")
         .eq("id", user.id)
         .single()
 
       if (error && /column|schema cache/i.test(error.message ?? "")) {
         const fallback = await supabase
           .from("profiles")
-          .select("name,username")
+          .select("name,username,plan")
           .eq("id", user.id)
           .single()
 
@@ -302,6 +304,7 @@ export default function Header() {
           setProfileName(fallback.data.name)
           setProfileAvatar(null)
           setProfileUsername(fallback.data.username ?? null)
+          setProfilePlan((fallback.data.plan as string | null) ?? null)
         }
         return
       }
@@ -310,6 +313,7 @@ export default function Header() {
         setProfileName(data.name)
         setProfileAvatar(data.avatar_url ?? null)
         setProfileUsername(data.username ?? null)
+        setProfilePlan((data.plan as string | null) ?? null)
       }
     }
 
@@ -1332,7 +1336,7 @@ export default function Header() {
                     key={shortcut.id}
                     type="button"
                     onClick={() => scrollToShortcut(shortcut.id)}
-                    className={`transition-colors ${
+                    className={`uppercase transition-colors ${
                       activeSection === shortcut.id
                         ? "text-black"
                         : "text-gray-500 hover:text-black"
@@ -1344,7 +1348,7 @@ export default function Header() {
                   <Link
                     key={shortcut.id}
                     href={`/#${shortcut.id}`}
-                    className={`transition-colors ${
+                    className={`uppercase transition-colors ${
                       activeSection === shortcut.id
                         ? "text-black"
                         : "text-gray-500 hover:text-black"
@@ -1566,6 +1570,15 @@ export default function Header() {
               >
                 Assinatura
               </Link>
+              {user && profilePlan === "profissional" ? (
+                <Link
+                  href="/admin/marcas"
+                  onClick={() => setMenuOpen(false)}
+                  className="mt-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-black transition-all duration-150 hover:translate-x-0.5"
+                >
+                  Marcas
+                </Link>
+              ) : null}
 
               {!user ? (
                 <Link

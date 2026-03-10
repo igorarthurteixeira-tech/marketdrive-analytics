@@ -362,6 +362,20 @@ export default async function Page({
           </Link>
         </div>
         <p className="text-gray-600 mb-4">{version.version_tier}</p>
+        <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
+          {imagePath ? (
+            <div className="relative h-6 w-10 overflow-hidden rounded-sm border border-gray-200 bg-gray-100">
+              <Image
+                src={imageSrc}
+                alt={`Miniatura ${modelName}`}
+                fill
+                sizes="40px"
+                className="object-cover"
+              />
+            </div>
+          ) : null}
+          <span>{brandName}</span>
+        </div>
       </section>
 
       <section className="max-w-7xl mx-auto px-8 pb-16">

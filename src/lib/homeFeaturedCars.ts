@@ -19,12 +19,18 @@ type VersionRow = {
     | {
         name: string | null
         image_url?: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }[]
     | {
         name: string | null
         image_url?: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }
     | null
 }
@@ -53,6 +59,8 @@ export type HomeCar = {
   id: string
   slug: string
   name: string
+  brandName: string
+  brandLogoUrl: string | null
   image: string | null
   authorId: string | null
   authorName: string
@@ -60,6 +68,21 @@ export type HomeCar = {
   rating: number | null
   ratingCount: number
   topPositive: string | null
+}
+
+const toBrandSlug = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) => {
+  if (logoPath && logoPath.trim()) return `/brands/${logoPath.trim()}`
+  const slug = toBrandSlug(brandName)
+  return slug ? `/brands/${slug}.png` : null
 }
 
 function toCard(
@@ -75,6 +98,8 @@ function toCard(
     id: version.id,
     slug: version.slug,
     name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${version.year ?? ""}`.trim(),
+    brandName: brand?.name ?? "",
+    brandLogoUrl: toBrandLogoSrc(brand?.logo_path, brand?.name ?? ""),
     image: vehicle?.image_url ?? version.image_url ?? null,
     authorId: version.created_by ?? null,
     authorName: authorName ?? "Autor da comunidade",
@@ -211,7 +236,7 @@ export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
     vehicles (
       name,
       image_url,
-      brands ( name )
+      brands ( name, logo_path )
     )
   `
 
@@ -224,7 +249,7 @@ export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
     vehicles (
       name,
       image_url,
-      brands ( name )
+      brands ( name, logo_path )
     )
   `
 

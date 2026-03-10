@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useAuth } from "@/components/AuthProvider"
+import BrandLogo from "@/components/BrandLogo"
 import { supabase } from "@/lib/supabaseClient"
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -10,6 +11,8 @@ import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 const VEHICLES_CACHE_KEY = "carros:vehicles:v1"
 const FILTERS_CACHE_KEY = "carros:filters:v1"
+const VEHICLE_STORAGE_URL =
+  "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
 
 type EnrichedVehicle = {
   id: string
@@ -25,6 +28,7 @@ type EnrichedVehicle = {
   versionTier: string
   modelName: string
   brandName: string
+  brandLogoUrl: string | null
   image_url: string | null
   rating: number | null
   ratingCount: number
@@ -46,12 +50,18 @@ type VehicleRow = {
     | {
         name: string | null
         image_url: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }[]
     | {
         name: string | null
         image_url: string | null
-        brands: { name: string | null }[] | { name: string | null } | null
+        brands:
+          | { name: string | null; logo_path?: string | null }[]
+          | { name: string | null; logo_path?: string | null }
+          | null
       }
     | null
 }
@@ -76,6 +86,33 @@ type ProfileRow = {
   id: string
   name: string | null
   avatar_url?: string | null
+}
+
+const toBrandSlug = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) => {
+  if (logoPath && logoPath.trim()) {
+    const raw = logoPath.trim()
+    return raw.startsWith("http://") || raw.startsWith("https://") ? raw : `/brands/${raw}`
+  }
+  if (!brandName) return null
+  const slug = toBrandSlug(brandName)
+  return slug ? `/brands/${slug}.png` : null
+}
+
+const toVehicleThumbSrc = (value: string | null | undefined) => {
+  if (!value) return null
+  const raw = value.trim()
+  if (!raw) return null
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+  return `${VEHICLE_STORAGE_URL}${raw}`
 }
 
 export default function CarrosPage() {
@@ -162,7 +199,7 @@ export default function CarrosPage() {
           vehicles (
             name,
             image_url,
-            brands ( name )
+            brands ( name, logo_path )
           )
         `
 
@@ -179,7 +216,7 @@ export default function CarrosPage() {
           vehicles (
             name,
             image_url,
-            brands ( name )
+            brands ( name, logo_path )
           )
         `
 
@@ -214,7 +251,7 @@ export default function CarrosPage() {
               vehicles (
                 name,
                 image_url,
-                brands ( name )
+                brands ( name, logo_path )
               )
             `)
             .order("year", { ascending: false })
@@ -336,6 +373,7 @@ export default function CarrosPage() {
           versionTier: version.version_tier ?? "",
           modelName: vehicle?.name ?? "",
           brandName: brand?.name ?? "",
+          brandLogoUrl: toBrandLogoSrc(brand?.logo_path, brand?.name ?? ""),
           image_url: version.image_url ?? vehicle?.image_url ?? null,
           rating,
           ratingCount: ratingStats?.total ?? 0,
@@ -515,7 +553,19 @@ export default function CarrosPage() {
               <p className="text-sm font-medium text-gray-900">Ano {version.year}</p>
 
               <p className="text-gray-500 text-sm mt-2 transition-colors duration-300 group-hover:text-gray-600">
-                {version.brandName} • Intermediaria • {version.engine} {version.transmission}
+                <span className="inline-flex items-center gap-1.5">
+                  {toVehicleThumbSrc(version.image_url) ? (
+                    <img
+                      src={toVehicleThumbSrc(version.image_url) ?? ""}
+                      alt={`Miniatura ${version.modelName}`}
+                      className="h-4 w-6 rounded-sm object-cover shrink-0"
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
+                  <span>{version.brandName}</span>
+                </span>{" "}
+                • Intermediaria • {version.engine} {version.transmission}
               </p>
 
               <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">

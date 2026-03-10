@@ -1,5 +1,6 @@
 import Image from "next/image"
 import Link from "next/link"
+import BrandLogo from "@/components/BrandLogo"
 import StarRating from "@/components/ui/StarRating"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
 
@@ -9,6 +10,8 @@ const STORAGE_URL =
 type HomePreviewCardProps = {
   slug: string
   name: string
+  brandName: string
+  brandLogoUrl: string | null
   image: string | null
   authorId: string | null
   authorName: string
@@ -21,6 +24,8 @@ type HomePreviewCardProps = {
 export default function HomePreviewCard({
   slug,
   name,
+  brandName,
+  brandLogoUrl,
   image,
   authorId,
   authorName,
@@ -61,6 +66,10 @@ export default function HomePreviewCard({
         <h3 className="text-lg font-semibold transition-colors duration-300 group-hover:text-red-700">
           {name}
         </h3>
+        <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+          <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
+          <span>{brandName}</span>
+        </p>
         <div className="mt-1">
           <UserIdentityBadge
             name={authorName}
