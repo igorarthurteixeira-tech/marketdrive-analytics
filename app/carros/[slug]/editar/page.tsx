@@ -142,6 +142,10 @@ function detectBodyStyleType(bodyStyle: string) {
   return normalize(bodyStyle) || "sem-carroceria"
 }
 
+function normalizeVersionName(value: string) {
+  return value.trim().toLowerCase()
+}
+
 function generateModelSlug(brand: string, model: string) {
   return `${normalize(brand)}-${normalize(model)}`
 }
@@ -717,6 +721,39 @@ export default function Page() {
       const aceleracaoTexto = acceleration0100.trim() || null
       const aceleracao = parseOptionalNumber(acceleration0100)
       const velocidadeMaxima = parseOptionalNumber(maxSpeedKmh)
+      const incomingVersionName = normalizeVersionName(versionName)
+      const incomingTransmissionType = detectTransmissionType(transmission)
+      const incomingBodyStyleType = detectBodyStyleType(bodyStyle)
+
+      const { data: possibleDuplicates } = await supabase
+        .from("vehicle_versions")
+        .select("id,version_name,year,transmission,body_style")
+        .eq("vehicle_id", vehicleId)
+        .eq("year", Number(year))
+        .neq("id", versionId)
+
+      const duplicated = ((possibleDuplicates as {
+        id: string
+        version_name: string | null
+        year: number | null
+        transmission: string | null
+        body_style?: string | null
+      }[] | null) ?? []).some((row) => {
+        const existingVersionName = normalizeVersionName(row.version_name ?? "")
+        const existingTransmissionType = detectTransmissionType(row.transmission ?? "")
+        const existingBodyStyleType = detectBodyStyleType(row.body_style ?? "")
+        return (
+          existingVersionName === incomingVersionName &&
+          existingTransmissionType === incomingTransmissionType &&
+          existingBodyStyleType === incomingBodyStyleType
+        )
+      })
+
+      if (duplicated) {
+        throw new Error(
+          "Já existe uma versão com este nome, ano, transmissão e carroceria para esse modelo."
+        )
+      }
 
       const modelSlug = generateModelSlug(selectedBrand.name, name)
       const generatedVersionSlug = generateVersionSlug(
