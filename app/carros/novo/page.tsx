@@ -3,6 +3,7 @@
 import { useAuth } from "@/components/AuthProvider"
 import BrandLogo from "@/components/BrandLogo"
 import { supabase } from "@/lib/supabaseClient"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { type Dispatch, type SetStateAction, useEffect, useMemo, useRef, useState } from "react"
@@ -48,6 +49,44 @@ type VehicleQueryRow = {
   id: string
   name: string
   brands: { name: string | null }[] | { name: string | null } | null
+}
+
+type DraftPayload = {
+  mode: "model" | "version"
+  brandId: string
+  name: string
+  vehicleId: string
+  versionName: string
+  bodyStyle: BodyStyleOption
+  versionTier: (typeof VERSION_TIERS)[number]
+  year: string
+  engine: string
+  transmission: string
+  fuelTypes: FuelOption[]
+  powerText: string
+  powerSingleCv: string
+  powerAlcoholCv: string
+  powerGasolineCv: string
+  powerRpm: string
+  torqueText: string
+  torqueSingleKgfm: string
+  torqueAlcoholKgfm: string
+  torqueGasolineKgfm: string
+  torqueRpm: string
+  consumptionSingleCity: string
+  consumptionSingleHighway: string
+  consumptionGasCity: string
+  consumptionGasHighway: string
+  consumptionAlcoholCity: string
+  consumptionAlcoholHighway: string
+  weightKg: string
+  acceleration0100: string
+  maxSpeedKmh: string
+  latinNcapPre2021: string
+  latinNcapPost2021: string
+  chronicDefects: string[]
+  pontualDefects: string[]
+  positivePoints: string[]
 }
 
 function normalize(text: string) {
@@ -176,6 +215,9 @@ export default function NovoCarro() {
   const [positivePoints, setPositivePoints] = useState<string[]>([])
 
   const [loading, setLoading] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [loadingDraft, setLoadingDraft] = useState(false)
+  const [draftId, setDraftId] = useState<string | null>(null)
   const [removingImage, setRemovingImage] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const [successMessage, setSuccessMessage] = useState("")
@@ -297,6 +339,174 @@ export default function NovoCarro() {
     window.addEventListener("mousedown", handlePointerDown)
     return () => window.removeEventListener("mousedown", handlePointerDown)
   }, [brandDropdownOpen])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const draft = new URLSearchParams(window.location.search).get("draft")
+    if (!draft || !session?.user?.id) return
+
+    const loadDraft = async () => {
+      setLoadingDraft(true)
+      const { data, error } = await supabase
+        .from("vehicle_drafts")
+        .select("id,payload")
+        .eq("id", draft)
+        .eq("user_id", session.user.id)
+        .single()
+
+      if (error || !data) {
+        setLoadingDraft(false)
+        return
+      }
+
+      const payload = (data.payload ?? {}) as Partial<DraftPayload>
+      setDraftId(data.id)
+      setMode(payload.mode === "version" ? "version" : "model")
+      setBrandId(payload.brandId ?? "")
+      setName(payload.name ?? "")
+      setVehicleId(payload.vehicleId ?? "")
+      setVersionName(payload.versionName ?? "")
+      setBodyStyle(
+        payload.bodyStyle && BODY_STYLE_OPTIONS.includes(payload.bodyStyle)
+          ? payload.bodyStyle
+          : "hatch"
+      )
+      setVersionTier(
+        payload.versionTier && VERSION_TIERS.includes(payload.versionTier)
+          ? payload.versionTier
+          : "intermediaria"
+      )
+      setYear(payload.year ?? "")
+      setEngine(payload.engine ?? "")
+      setTransmission(payload.transmission ?? "")
+      setFuelTypes(
+        Array.isArray(payload.fuelTypes)
+          ? payload.fuelTypes.filter((item): item is FuelOption => FUEL_OPTIONS.includes(item))
+          : ["gasolina", "etanol"]
+      )
+      setPowerText(payload.powerText ?? "")
+      setPowerSingleCv(payload.powerSingleCv ?? "")
+      setPowerAlcoholCv(payload.powerAlcoholCv ?? "")
+      setPowerGasolineCv(payload.powerGasolineCv ?? "")
+      setPowerRpm(payload.powerRpm ?? "")
+      setTorqueText(payload.torqueText ?? "")
+      setTorqueSingleKgfm(payload.torqueSingleKgfm ?? "")
+      setTorqueAlcoholKgfm(payload.torqueAlcoholKgfm ?? "")
+      setTorqueGasolineKgfm(payload.torqueGasolineKgfm ?? "")
+      setTorqueRpm(payload.torqueRpm ?? "")
+      setConsumptionSingleCity(payload.consumptionSingleCity ?? "")
+      setConsumptionSingleHighway(payload.consumptionSingleHighway ?? "")
+      setConsumptionGasCity(payload.consumptionGasCity ?? "")
+      setConsumptionGasHighway(payload.consumptionGasHighway ?? "")
+      setConsumptionAlcoholCity(payload.consumptionAlcoholCity ?? "")
+      setConsumptionAlcoholHighway(payload.consumptionAlcoholHighway ?? "")
+      setWeightKg(payload.weightKg ?? "")
+      setAcceleration0100(payload.acceleration0100 ?? "")
+      setMaxSpeedKmh(payload.maxSpeedKmh ?? "")
+      setLatinNcapPre2021(payload.latinNcapPre2021 ?? "")
+      setLatinNcapPost2021(payload.latinNcapPost2021 ?? "")
+      setChronicDefects(Array.isArray(payload.chronicDefects) ? payload.chronicDefects : [""])
+      setPontualDefects(Array.isArray(payload.pontualDefects) ? payload.pontualDefects : [""])
+      setPositivePoints(Array.isArray(payload.positivePoints) ? payload.positivePoints : [""])
+      setSuccessMessage("Rascunho carregado com sucesso.")
+      setLoadingDraft(false)
+    }
+
+    void loadDraft()
+  }, [session?.user?.id])
+
+  const buildDraftPayload = (): DraftPayload => ({
+    mode,
+    brandId,
+    name,
+    vehicleId,
+    versionName,
+    bodyStyle,
+    versionTier,
+    year,
+    engine,
+    transmission,
+    fuelTypes,
+    powerText,
+    powerSingleCv,
+    powerAlcoholCv,
+    powerGasolineCv,
+    powerRpm,
+    torqueText,
+    torqueSingleKgfm,
+    torqueAlcoholKgfm,
+    torqueGasolineKgfm,
+    torqueRpm,
+    consumptionSingleCity,
+    consumptionSingleHighway,
+    consumptionGasCity,
+    consumptionGasHighway,
+    consumptionAlcoholCity,
+    consumptionAlcoholHighway,
+    weightKg,
+    acceleration0100,
+    maxSpeedKmh,
+    latinNcapPre2021,
+    latinNcapPost2021,
+    chronicDefects,
+    pontualDefects,
+    positivePoints,
+  })
+
+  const handleSaveDraft = async () => {
+    resetMessages()
+    const userId = session?.user?.id
+    if (!userId) {
+      setErrorMessage("Faça login para salvar rascunhos.")
+      return
+    }
+
+    setSavingDraft(true)
+    const payload = buildDraftPayload()
+    const titleBase =
+      payload.mode === "model"
+        ? `${name || "Novo modelo"} - ${versionName || "Nova versão"}`
+        : `${selectedVehicle?.brandName ?? "Modelo"} ${selectedVehicle?.name ?? ""} - ${versionName || "Nova versão"}`
+
+    if (draftId) {
+      const { error } = await supabase
+        .from("vehicle_drafts")
+        .update({
+          mode: payload.mode,
+          title: titleBase.trim(),
+          payload,
+        })
+        .eq("id", draftId)
+        .eq("user_id", userId)
+
+      if (error) {
+        setErrorMessage(`Falha ao salvar rascunho: ${error.message}`)
+      } else {
+        setSuccessMessage("Rascunho atualizado com sucesso.")
+      }
+      setSavingDraft(false)
+      return
+    }
+
+    const { data, error } = await supabase
+      .from("vehicle_drafts")
+      .insert({
+        user_id: userId,
+        mode: payload.mode,
+        title: titleBase.trim(),
+        payload,
+      })
+      .select("id")
+      .single()
+
+    if (error || !data) {
+      setErrorMessage(`Falha ao salvar rascunho: ${error?.message ?? "erro desconhecido"}`)
+    } else {
+      setDraftId(data.id)
+      setSuccessMessage("Rascunho salvo com sucesso.")
+    }
+    setSavingDraft(false)
+  }
 
   const resetMessages = () => {
     setErrorMessage("")
@@ -880,7 +1090,15 @@ export default function NovoCarro() {
 
   return (
     <div className="min-h-screen max-w-3xl mx-auto px-10 pt-28 pb-10">
-      <h1 className="text-3xl font-bold mb-8 tracking-tight">Cadastro de Veículos</h1>
+      <div className="mb-8 flex items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold tracking-tight">Cadastro de Veículos</h1>
+        <Link
+          href="/carros/rascunhos"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+          Ver rascunhos
+        </Link>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm p-6 shadow-sm transition-all duration-300">
         <div className="flex gap-6">
@@ -1460,16 +1678,27 @@ export default function NovoCarro() {
           </button>
         </div>
 
+        {loadingDraft ? <p className="text-sm text-gray-600">Carregando rascunho...</p> : null}
         {errorMessage ? <p className="text-red-600">{errorMessage}</p> : null}
         {successMessage ? <p className="text-green-700">{successMessage}</p> : null}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="bg-black text-white px-6 py-3 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:transform-none disabled:cursor-not-allowed"
-        >
-          {loading ? "Salvando..." : "Salvar"}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleSaveDraft()}
+            disabled={savingDraft || loading}
+            className="rounded-lg border border-gray-300 px-6 py-3 text-gray-700 hover:bg-gray-50 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {savingDraft ? "Salvando rascunho..." : "Salvar como rascunho"}
+          </button>
+          <button
+            type="submit"
+            disabled={loading || savingDraft}
+            className="bg-black text-white px-6 py-3 rounded-lg shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 cursor-pointer disabled:opacity-60 disabled:transform-none disabled:cursor-not-allowed"
+          >
+            {loading ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
       </form>
     </div>
   )

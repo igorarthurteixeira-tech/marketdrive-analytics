@@ -494,12 +494,20 @@ export default function CarrosPage() {
         <h1 className="text-3xl font-bold">Veículos</h1>
 
         {plan === "profissional" && (
-          <Link
-            href="/carros/novo"
-            className="bg-black text-white px-5 py-2 rounded-lg shadow-sm hover:bg-gray-900 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-          >
-            Novo
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/carros/rascunhos"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Rascunhos
+            </Link>
+            <Link
+              href="/carros/novo"
+              className="bg-black text-white px-5 py-2 rounded-lg shadow-sm hover:bg-gray-900 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+            >
+              Novo
+            </Link>
+          </div>
         )}
       </div>
 
