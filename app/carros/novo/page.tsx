@@ -332,8 +332,13 @@ export default function NovoCarro() {
     let createdVersionId = ""
     let uploadedImagePath: string | null = null
     let createdVehicleId: string | null = null
+    const currentUserId = session?.user?.id ?? null
 
     try {
+      if (!currentUserId) {
+        throw new Error("Sessão inválida. Faça login novamente.")
+      }
+
       if (!year || !engine || !transmission || !versionName) {
         throw new Error("Preencha todos os campos da versão.")
       }
@@ -439,7 +444,7 @@ export default function NovoCarro() {
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicle.id,
-            created_by: session?.user?.id ?? null,
+            created_by: currentUserId,
             image_url: imagePath,
             year: Number(year),
             engine,
@@ -482,6 +487,7 @@ export default function NovoCarro() {
             .from("vehicle_versions")
             .insert({
               vehicle_id: vehicle.id,
+              created_by: currentUserId,
               image_url: imagePath,
               year: Number(year),
               engine,
@@ -539,7 +545,7 @@ export default function NovoCarro() {
           .from("vehicle_versions")
           .insert({
             vehicle_id: vehicleId,
-            created_by: session?.user?.id ?? null,
+            created_by: currentUserId,
             year: Number(year),
             engine,
             transmission,
@@ -581,6 +587,7 @@ export default function NovoCarro() {
             .from("vehicle_versions")
             .insert({
               vehicle_id: vehicleId,
+              created_by: currentUserId,
               year: Number(year),
               engine,
               transmission,
@@ -629,13 +636,13 @@ export default function NovoCarro() {
             vehicle_version_id: createdVersionId,
             title,
             severity: 2,
-            created_by: session?.user?.id ?? null,
+            created_by: currentUserId,
           })),
           ...pontualList.map((title) => ({
             vehicle_version_id: createdVersionId,
             title,
             severity: 1,
-            created_by: session?.user?.id ?? null,
+            created_by: currentUserId,
           })),
         ]
 
@@ -652,7 +659,7 @@ export default function NovoCarro() {
         const positivesPayload = positivesList.map((description) => ({
           vehicle_version_id: createdVersionId,
           description,
-          created_by: session?.user?.id ?? null,
+          created_by: currentUserId,
         }))
 
         const { error: positivesError } = await supabase
