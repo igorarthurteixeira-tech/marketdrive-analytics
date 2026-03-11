@@ -24,6 +24,7 @@ type EnrichedVehicle = {
   fuelTypes: string[]
   versionName: string
   versionTier: string
+  bodyStyle: string
   modelName: string
   brandName: string
   brandLogoUrl: string | null
@@ -44,6 +45,7 @@ type VehicleRow = {
   fuel_types?: string[] | null
   version_name: string | null
   version_tier: string | null
+  body_style?: string | null
   vehicles:
     | {
         name: string | null
@@ -119,6 +121,26 @@ const formatVersionTier = (tier: string | null | undefined) => {
     "esportivo de luxo": "Esportivo de luxo",
   }
   return labels[normalized] ?? tier
+}
+
+const formatBodyStyle = (value: string | null | undefined) => {
+  if (!value) return "Não informada"
+  const normalized = value.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    hatch: "Hatch",
+    sedan: "Sedan",
+    suv: "SUV",
+    crossover: "Crossover",
+    picape: "Picape",
+    coupe: "Cupê",
+    cupe: "Cupê",
+    perua: "Perua",
+    wagon: "Perua",
+    van: "Van",
+    minivan: "Van",
+    outro: "Outro",
+  }
+  return labels[normalized] ?? value
 }
 
 export default function CarrosPage() {
@@ -205,6 +227,7 @@ export default function CarrosPage() {
           fuel_types,
           version_name,
           version_tier,
+          body_style,
           vehicles (
             name,
             image_url,
@@ -380,6 +403,7 @@ export default function CarrosPage() {
           fuelTypes: Array.isArray(version.fuel_types) ? version.fuel_types : [],
           versionName: version.version_name ?? "",
           versionTier: version.version_tier ?? "",
+          bodyStyle: version.body_style ?? "",
           modelName: vehicle?.name ?? "",
           brandName: brand?.name ?? "",
           brandLogoUrl: toBrandLogoSrc(brand?.logo_path, brand?.name ?? ""),
@@ -449,6 +473,7 @@ export default function CarrosPage() {
         vehicle.brandName,
         vehicle.modelName,
         vehicle.versionName,
+        vehicle.bodyStyle,
         vehicle.engine,
         vehicle.transmission,
         ...(vehicle.fuelTypes ?? []),
@@ -559,14 +584,29 @@ export default function CarrosPage() {
                 disableProfileLink
               />
 
-              <p className="text-sm font-medium text-gray-900">Ano {version.year}</p>
+              <p className="mt-2 text-sm font-medium text-gray-900">Ano {version.year}</p>
 
-              <p className="text-gray-500 text-sm mt-2 transition-colors duration-300 group-hover:text-gray-600">
+              <p className="mt-2 text-gray-500 text-sm transition-colors duration-300 group-hover:text-gray-600">
                 <span className="inline-flex items-center gap-1.5">
                   <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
                   <span>{version.brandName}</span>
-                </span>{" "}
-                • {formatVersionTier(version.versionTier)} • {version.engine} {version.transmission}
+                </span>
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  Classificação: {formatVersionTier(version.versionTier)}
+                </span>
+                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  Carroceria: {formatBodyStyle(version.bodyStyle)}
+                </span>
+                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                  {version.engine} · {version.transmission}
+                </span>
+              </div>
+
+              <p className="mt-3 text-gray-500 text-xs transition-colors duration-300 group-hover:text-gray-600">
+                Versão: <span className="text-gray-700">{version.versionName || "Não informada"}</span>
               </p>
 
               <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">
