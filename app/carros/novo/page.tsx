@@ -413,16 +413,33 @@ export default function NovoCarro() {
 
         const modelSlug = generateModelSlug(brand.name, name)
 
-        const { data: vehicle, error: vehicleError } = await supabase
+        let { data: vehicle, error: vehicleError } = await supabase
           .from("vehicles")
           .insert({
             brand_id: brandId,
+            created_by: currentUserId,
             name,
             slug: modelSlug,
             image_url: imagePath,
           })
           .select("id")
           .single()
+
+        if (vehicleError && /column|schema cache/i.test(vehicleError.message ?? "")) {
+          const fallbackVehicle = await supabase
+            .from("vehicles")
+            .insert({
+              brand_id: brandId,
+              name,
+              slug: modelSlug,
+              image_url: imagePath,
+            })
+            .select("id")
+            .single()
+
+          vehicle = fallbackVehicle.data
+          vehicleError = fallbackVehicle.error
+        }
 
         if (vehicleError || !vehicle) {
           throw new Error(
@@ -674,21 +691,30 @@ export default function NovoCarro() {
       setTimeout(() => router.push("/carros"), 700)
     } catch (err: unknown) {
       // Reverte tudo que foi criado nesta submissão para não deixar dados incompletos.
+      const rollbackIssues: string[] = []
       if (createdVersionId) {
-        await supabase.from("vehicle_versions").delete().eq("id", createdVersionId)
+        const { error } = await supabase
+          .from("vehicle_versions")
+          .delete()
+          .eq("id", createdVersionId)
+        if (error) rollbackIssues.push(`Falha ao reverter versão: ${error.message}`)
       }
 
       if (createdVehicleId) {
-        await supabase.from("vehicles").delete().eq("id", createdVehicleId)
+        const { error } = await supabase.from("vehicles").delete().eq("id", createdVehicleId)
+        if (error) rollbackIssues.push(`Falha ao reverter modelo: ${error.message}`)
       }
 
       if (uploadedImagePath) {
-        await supabase.storage.from("vehicle-images").remove([uploadedImagePath])
+        const { error } = await supabase.storage.from("vehicle-images").remove([uploadedImagePath])
+        if (error) rollbackIssues.push(`Falha ao reverter imagem: ${error.message}`)
       }
 
       setErrorMessage(
         err instanceof Error
-          ? `Falha ao salvar. Detalhe: ${err.message}`
+          ? `Falha ao salvar. Detalhe: ${err.message}${
+              rollbackIssues.length ? ` | Rollback: ${rollbackIssues.join(" | ")}` : ""
+            }`
           : "Falha ao salvar. Erro inesperado."
       )
     } finally {
