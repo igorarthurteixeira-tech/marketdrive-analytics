@@ -329,6 +329,9 @@ export default function NovoCarro() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     resetMessages()
+    let createdVersionId = ""
+    let uploadedImagePath: string | null = null
+    let createdVehicleId: string | null = null
 
     try {
       if (!year || !engine || !transmission || !versionName) {
@@ -389,8 +392,6 @@ export default function NovoCarro() {
       const latinNcapAte2021 = latinNcapPre2021.trim() || null
       const latinNcapPos2021 = latinNcapPost2021.trim() || null
 
-      let createdVersionId = ""
-
       if (mode === "model") {
         if (!brandId || !name) {
           throw new Error("Selecione marca e informe o nome do modelo.")
@@ -403,6 +404,7 @@ export default function NovoCarro() {
         if (!brand) throw new Error("Marca inválida.")
 
         const imagePath = await uploadImageIfNeeded()
+        uploadedImagePath = imagePath
 
         const modelSlug = generateModelSlug(brand.name, name)
 
@@ -418,8 +420,13 @@ export default function NovoCarro() {
           .single()
 
         if (vehicleError || !vehicle) {
-          throw new Error("Não foi possível criar o modelo. Verifique duplicidade.")
+          throw new Error(
+            `Não foi possível criar o modelo. ${
+              vehicleError?.message ?? "Verifique duplicidade."
+            }`
+          )
         }
+        createdVehicleId = vehicle.id
 
         const versionSlug = generateVersionSlug(
           brand.name,
@@ -507,7 +514,11 @@ export default function NovoCarro() {
         }
 
         if (versionError || !createdVersion) {
-          throw new Error("Modelo criado, mas falhou ao criar a versão.")
+          throw new Error(
+            `Modelo criado, mas falhou ao criar a versão. ${
+              versionError?.message ?? "Verifique duplicidade e campos obrigatórios."
+            }`
+          )
         }
 
         createdVersionId = createdVersion.id
@@ -601,7 +612,11 @@ export default function NovoCarro() {
         }
 
         if (versionError || !createdVersion) {
-          throw new Error("Não foi possível criar a versão. Verifique duplicidade.")
+          throw new Error(
+            `Não foi possível criar a versão. ${
+              versionError?.message ?? "Verifique duplicidade."
+            }`
+          )
         }
 
         createdVersionId = createdVersion.id
@@ -651,7 +666,24 @@ export default function NovoCarro() {
 
       setTimeout(() => router.push("/carros"), 700)
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : "Erro inesperado.")
+      // Reverte tudo que foi criado nesta submissão para não deixar dados incompletos.
+      if (createdVersionId) {
+        await supabase.from("vehicle_versions").delete().eq("id", createdVersionId)
+      }
+
+      if (createdVehicleId) {
+        await supabase.from("vehicles").delete().eq("id", createdVehicleId)
+      }
+
+      if (uploadedImagePath) {
+        await supabase.storage.from("vehicle-images").remove([uploadedImagePath])
+      }
+
+      setErrorMessage(
+        err instanceof Error
+          ? `Falha ao salvar. Detalhe: ${err.message}`
+          : "Falha ao salvar. Erro inesperado."
+      )
     } finally {
       setLoading(false)
     }
