@@ -20,6 +20,17 @@ const VERSION_TIERS = [
 
 const FUEL_OPTIONS = ["gasolina", "etanol", "diesel", "gnv", "eletrico", "hibrido"] as const
 type FuelOption = (typeof FUEL_OPTIONS)[number]
+const BODY_STYLE_OPTIONS = [
+  "hatch",
+  "sedan",
+  "suv",
+  "picape",
+  "cupe",
+  "perua",
+  "van",
+  "outro",
+] as const
+type BodyStyleOption = (typeof BODY_STYLE_OPTIONS)[number]
 
 type Brand = {
   id: string
@@ -60,6 +71,23 @@ function detectTransmissionType(transmission: string) {
   return normalize(transmission) || "sem-transmissao"
 }
 
+function detectBodyStyleType(bodyStyle: string) {
+  const normalized = bodyStyle
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+  if (normalized.includes("hatch")) return "hatch"
+  if (normalized.includes("sedan")) return "sedan"
+  if (normalized.includes("suv")) return "suv"
+  if (normalized.includes("crossover")) return "crossover"
+  if (normalized.includes("picape") || normalized.includes("pickup")) return "picape"
+  if (normalized.includes("coupe") || normalized.includes("cupe")) return "cupe"
+  if (normalized.includes("perua") || normalized.includes("wagon")) return "perua"
+  if (normalized.includes("van") || normalized.includes("minivan")) return "van"
+  return normalize(bodyStyle) || "sem-carroceria"
+}
+
 function generateModelSlug(brand: string, model: string) {
   return `${normalize(brand)}-${normalize(model)}`
 }
@@ -69,10 +97,12 @@ function generateVersionSlug(
   model: string,
   versionName: string,
   year: string,
-  transmission: string
+  transmission: string,
+  bodyStyle: string
 ) {
   const transmissionType = detectTransmissionType(transmission)
-  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${transmissionType}-${year}`
+  const bodyStyleType = detectBodyStyleType(bodyStyle)
+  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${bodyStyleType}-${transmissionType}-${year}`
 }
 
 function toBrandLogoSrc(brand: Brand | null) {
@@ -110,6 +140,7 @@ export default function NovoCarro() {
   const [vehicleId, setVehicleId] = useState("")
 
   const [versionName, setVersionName] = useState("")
+  const [bodyStyle, setBodyStyle] = useState<BodyStyleOption>("hatch")
   const [versionTier, setVersionTier] = useState<(typeof VERSION_TIERS)[number]>("intermediaria")
   const [year, setYear] = useState("")
   const [engine, setEngine] = useState("")
@@ -357,6 +388,9 @@ export default function NovoCarro() {
       if (!year || !engine || !transmission || !versionName) {
         throw new Error("Preencha todos os campos da versão.")
       }
+      if (!bodyStyle.trim()) {
+        throw new Error("Informe a carroceria da versão.")
+      }
       if (!fuelTypes.length) {
         throw new Error("Selecione ao menos um combustível para a versão.")
       }
@@ -480,7 +514,8 @@ export default function NovoCarro() {
           name,
           versionName,
           year,
-          transmission
+          transmission,
+          bodyStyle
         )
 
         let { data: createdVersion, error: versionError } = await supabase
@@ -492,6 +527,7 @@ export default function NovoCarro() {
             year: Number(year),
             engine,
             transmission,
+            body_style: bodyStyle,
             fuel_types: fuelTypes,
             potencia_cv: potenciaCv,
             potencia_texto: powerText.trim() || null,
@@ -535,6 +571,7 @@ export default function NovoCarro() {
               year: Number(year),
               engine,
               transmission,
+              body_style: bodyStyle,
               potencia_cv: potenciaCv,
               potencia_texto: powerText.trim() || null,
               potencia_alcool_cv: potenciaAlcool,
@@ -564,13 +601,13 @@ export default function NovoCarro() {
 
         if (versionError || !createdVersion) {
           const duplicateVersion =
-            versionError?.code === "23505" ||
-            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci/i.test(
+              versionError?.code === "23505" ||
+            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci|uq_vehicle_versions_vehicle_version_year_transmission_body_style_ci|uq_vehicle_versions_vehicle_version_year_transmission_type_body_style_type_ci/i.test(
               versionError?.message ?? ""
             )
           if (duplicateVersion) {
             throw new Error(
-              "Já existe uma versão com este nome, ano e transmissão para esse modelo."
+              "Já existe uma versão com este nome, ano, transmissão e carroceria para esse modelo."
             )
           }
           throw new Error(
@@ -592,8 +629,12 @@ export default function NovoCarro() {
           selectedVehicle.name,
           versionName,
           year,
-          transmission
+          transmission,
+          bodyStyle
         )
+
+        const versionImagePath = await uploadImageIfNeeded()
+        uploadedImagePath = versionImagePath
 
         let { data: createdVersion, error: versionError } = await supabase
           .from("vehicle_versions")
@@ -603,7 +644,9 @@ export default function NovoCarro() {
             year: Number(year),
             engine,
             transmission,
+            body_style: bodyStyle,
             fuel_types: fuelTypes,
+            image_url: versionImagePath,
             potencia_cv: potenciaCv,
             potencia_texto: powerText.trim() || null,
             potencia_alcool_cv: potenciaAlcool,
@@ -645,6 +688,7 @@ export default function NovoCarro() {
               year: Number(year),
               engine,
               transmission,
+              body_style: bodyStyle,
               potencia_cv: potenciaCv,
               potencia_texto: powerText.trim() || null,
               potencia_alcool_cv: potenciaAlcool,
@@ -674,13 +718,13 @@ export default function NovoCarro() {
 
         if (versionError || !createdVersion) {
           const duplicateVersion =
-            versionError?.code === "23505" ||
-            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci/i.test(
+              versionError?.code === "23505" ||
+            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci|uq_vehicle_versions_vehicle_version_year_transmission_body_style_ci|uq_vehicle_versions_vehicle_version_year_transmission_type_body_style_type_ci/i.test(
               versionError?.message ?? ""
             )
           if (duplicateVersion) {
             throw new Error(
-              "Já existe uma versão com este nome, ano e transmissão para esse modelo."
+              "Já existe uma versão com este nome, ano, transmissão e carroceria para esse modelo."
             )
           }
           throw new Error(
@@ -931,6 +975,44 @@ export default function NovoCarro() {
           </select>
         )}
 
+        {mode === "version" ? (
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Imagem da versão (opcional)
+            </label>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageChange(e.target.files?.[0] ?? null)}
+              className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50 cursor-pointer"
+            />
+
+            {imagePreview ? (
+              <div className="border rounded-lg p-3 w-fit bg-white shadow-sm transition-all duration-300">
+                <p className="text-xs text-gray-500 mb-2">Prévia</p>
+                <Image
+                  src={imagePreview}
+                  alt="Prévia da imagem selecionada"
+                  width={256}
+                  height={160}
+                  unoptimized
+                  className="h-40 w-64 object-contain rounded bg-gray-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  disabled={removingImage}
+                  className="mt-3 text-sm text-red-600 hover:text-red-700 transition-colors duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {removingImage ? <span className="animate-pulse">Removendo...</span> : "Remover imagem"}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         <input
           type="text"
           placeholder="Nome da versão (ex: Highline, GTS, Track)"
@@ -939,6 +1021,19 @@ export default function NovoCarro() {
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           required
         />
+
+        <select
+          value={bodyStyle}
+          onChange={(e) => setBodyStyle(e.target.value as BodyStyleOption)}
+          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          required
+        >
+          {BODY_STYLE_OPTIONS.map((style) => (
+            <option key={style} value={style}>
+              {style}
+            </option>
+          ))}
+        </select>
 
         <select
           value={versionTier}

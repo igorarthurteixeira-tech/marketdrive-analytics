@@ -22,6 +22,17 @@ const VERSION_TIERS = [
 ] as const
 const FUEL_OPTIONS = ["gasolina", "etanol", "diesel", "gnv", "eletrico", "hibrido"] as const
 type FuelOption = (typeof FUEL_OPTIONS)[number]
+const BODY_STYLE_OPTIONS = [
+  "hatch",
+  "sedan",
+  "suv",
+  "picape",
+  "cupe",
+  "perua",
+  "van",
+  "outro",
+] as const
+type BodyStyleOption = (typeof BODY_STYLE_OPTIONS)[number]
 
 type Brand = {
   id: string
@@ -76,6 +87,7 @@ type EditableVersionRow = {
   velocidade_maxima_kmh: number | null
   version_name: string | null
   version_tier: string | null
+  body_style?: string | null
   vehicles: VersionVehicle[] | VersionVehicle | null
 }
 
@@ -113,6 +125,23 @@ function detectTransmissionType(transmission: string) {
   return normalize(transmission) || "sem-transmissao"
 }
 
+function detectBodyStyleType(bodyStyle: string) {
+  const normalized = bodyStyle
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+  if (normalized.includes("hatch")) return "hatch"
+  if (normalized.includes("sedan")) return "sedan"
+  if (normalized.includes("suv")) return "suv"
+  if (normalized.includes("crossover")) return "crossover"
+  if (normalized.includes("picape") || normalized.includes("pickup")) return "picape"
+  if (normalized.includes("coupe") || normalized.includes("cupe")) return "cupe"
+  if (normalized.includes("perua") || normalized.includes("wagon")) return "perua"
+  if (normalized.includes("van") || normalized.includes("minivan")) return "van"
+  return normalize(bodyStyle) || "sem-carroceria"
+}
+
 function generateModelSlug(brand: string, model: string) {
   return `${normalize(brand)}-${normalize(model)}`
 }
@@ -122,10 +151,12 @@ function generateVersionSlug(
   model: string,
   versionName: string,
   year: string,
-  transmission: string
+  transmission: string,
+  bodyStyle: string
 ) {
   const transmissionType = detectTransmissionType(transmission)
-  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${transmissionType}-${year}`
+  const bodyStyleType = detectBodyStyleType(bodyStyle)
+  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${bodyStyleType}-${transmissionType}-${year}`
 }
 
 function toBrandLogoSrc(brand: Brand | null) {
@@ -159,6 +190,7 @@ export default function Page() {
   const brandDropdownRef = useRef<HTMLDivElement | null>(null)
   const [name, setName] = useState("")
   const [versionName, setVersionName] = useState("")
+  const [bodyStyle, setBodyStyle] = useState<BodyStyleOption>("hatch")
   const [versionTier, setVersionTier] = useState<(typeof VERSION_TIERS)[number]>("intermediaria")
   const [year, setYear] = useState("")
   const [engine, setEngine] = useState("")
@@ -338,6 +370,7 @@ export default function Page() {
           velocidade_maxima_kmh,
           version_name,
           version_tier,
+          body_style,
           vehicles (
             id,
             name,
@@ -394,6 +427,12 @@ export default function Page() {
       setName(vehicleData?.name ?? "")
       setVersionName(typedVersion.version_name ?? "")
       setVersionTier((typedVersion.version_tier ?? "intermediaria") as (typeof VERSION_TIERS)[number])
+      const incomingBodyStyle = (typedVersion.body_style ?? "hatch").toLowerCase()
+      setBodyStyle(
+        BODY_STYLE_OPTIONS.includes(incomingBodyStyle as BodyStyleOption)
+          ? (incomingBodyStyle as BodyStyleOption)
+          : "outro"
+      )
       setYear(String(typedVersion.year ?? ""))
       setEngine(typedVersion.engine ?? "")
       setTransmission(typedVersion.transmission ?? "")
@@ -685,7 +724,8 @@ export default function Page() {
         name,
         versionName,
         year,
-        transmission
+        transmission,
+        bodyStyle
       )
       // Preserve current URL slug to avoid breaking existing links.
       const versionSlug = slug || generatedVersionSlug
@@ -708,6 +748,7 @@ export default function Page() {
             year: Number(year),
             engine,
             transmission,
+            body_style: bodyStyle,
             fuel_types: fuelTypes,
             potencia_cv: potenciaCv,
             potencia_texto: powerText.trim() || null,
@@ -792,6 +833,7 @@ export default function Page() {
         year: Number(year),
         engine,
         transmission,
+        body_style: bodyStyle,
         fuel_types: fuelTypes,
         potencia_cv: potenciaCv,
         potencia_texto: powerText.trim() || null,
@@ -827,6 +869,7 @@ export default function Page() {
         year: Number(year),
         engine,
         transmission,
+        body_style: bodyStyle,
         potencia_cv: potenciaCv,
         torque_kgfm: torque,
         peso_kg: pesoKg,
@@ -1053,6 +1096,19 @@ export default function Page() {
           className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
           required
         />
+
+        <select
+          value={bodyStyle}
+          onChange={(e) => setBodyStyle(e.target.value as BodyStyleOption)}
+          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          required
+        >
+          {BODY_STYLE_OPTIONS.map((style) => (
+            <option key={style} value={style}>
+              {style}
+            </option>
+          ))}
+        </select>
 
         <select
           value={versionTier}
