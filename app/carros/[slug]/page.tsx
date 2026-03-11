@@ -50,6 +50,7 @@ type VersionDetail = {
   velocidade_maxima_kmh: number | null
   version_name: string | null
   version_tier: string | null
+  body_style?: string | null
   vehicles:
     | {
         name: string | null
@@ -93,6 +94,27 @@ const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) 
   if (!brandName) return null
   const slug = toBrandSlug(brandName)
   return slug ? `/brands/${slug}.png` : null
+}
+
+const formatBodyStyle = (value: string | null | undefined) => {
+  if (!value) return null
+  const normalized = value.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    hatch: "Hatch",
+    sedan: "Sedan",
+    suv: "SUV",
+    crossover: "Crossover",
+    picape: "Picape",
+    pickup: "Picape",
+    coupe: "Cupê",
+    cupe: "Cupê",
+    perua: "Perua",
+    wagon: "Perua",
+    van: "Van",
+    minivan: "Van",
+    outro: "Outro",
+  }
+  return labels[normalized] ?? value
 }
 
 export default async function Page({
@@ -140,6 +162,7 @@ export default async function Page({
       velocidade_maxima_kmh,
       version_name,
       version_tier,
+      body_style,
       vehicles (
         name,
         image_url,
@@ -263,6 +286,7 @@ export default async function Page({
 
   const geraisItems: SpecItem[] = [
     { label: "Motorização", value: version.engine },
+    { label: "Carroceria", value: formatBodyStyle(version.body_style) },
     { label: "Combustível", value: formatFuelTypes(version.fuel_types) },
     {
       label: "Potência (cv)",
@@ -388,7 +412,10 @@ export default async function Page({
             Editar
           </Link>
         </div>
-        <p className="text-gray-600 mb-4">{version.version_tier}</p>
+        <p className="text-gray-600 mb-4">
+          {version.version_tier}
+          {formatBodyStyle(version.body_style) ? ` • ${formatBodyStyle(version.body_style)}` : ""}
+        </p>
         <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
           <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
           <span>{brandName}</span>
