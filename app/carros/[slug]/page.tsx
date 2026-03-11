@@ -235,6 +235,7 @@ export default async function Page({
   const brandName = brandData?.name ?? ""
   const brandLogoUrl = toBrandLogoSrc(brandData?.logo_path, brandName)
   const modelName = vehicleData?.name ?? ""
+  const bodyStyleLabel = formatBodyStyle(version.body_style)
   const imagePath = version.image_url ?? vehicleData?.image_url ?? ""
   const imageVersion = query.v ? encodeURIComponent(query.v) : ""
   const imageSrc = imagePath
@@ -402,7 +403,7 @@ export default async function Page({
       <section className="max-w-7xl mx-auto px-8 pb-16">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-4xl font-bold mb-4 tracking-tight">
-            {brandName} {modelName} {version.version_name} {version.year}
+            {brandName} {modelName} {version.version_name} {bodyStyleLabel ?? ""} {version.year}
           </h1>
 
           <Link
@@ -414,7 +415,8 @@ export default async function Page({
         </div>
         <p className="text-gray-600 mb-4">
           {version.version_tier}
-          {formatBodyStyle(version.body_style) ? ` • ${formatBodyStyle(version.body_style)}` : ""}
+          {bodyStyleLabel ? ` • ${bodyStyleLabel}` : ""}
+          {version.transmission ? ` • ${version.transmission}` : ""}
         </p>
         <div className="mb-2 inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700">
           <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
@@ -444,7 +446,7 @@ export default async function Page({
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-semibold mb-1">Especificações da versão</h2>
             <p className="text-sm text-gray-600 mb-5">
-              {modelName} {version.version_name}
+              {modelName} {version.version_name} {bodyStyleLabel ?? ""}
             </p>
             <div className="space-y-6">
               {specGroups.map((group) => (
