@@ -153,6 +153,8 @@ export default function CarrosPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [selectedYear, setSelectedYear] = useState("all")
+  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
+  const [compareSelectionError, setCompareSelectionError] = useState("")
   const hadVehiclesCacheOnLoad = useRef(false)
 
   useEffect(() => {
@@ -488,6 +490,23 @@ export default function CarrosPage() {
     })
   }, [searchTerm, selectedBrand, selectedYear, vehicles])
 
+  const toggleCompareSelection = (id: string) => {
+    setCompareSelectionError("")
+    setSelectedCompareIds((current) => {
+      if (current.includes(id)) {
+        return current.filter((item) => item !== id)
+      }
+      if (current.length >= 5) {
+        setCompareSelectionError("Limite de 5 modelos para comparação.")
+        return current
+      }
+      return [...current, id]
+    })
+  }
+
+  const canCompare = selectedCompareIds.length >= 2
+  const compareHref = `/carros/comparar?ids=${encodeURIComponent(selectedCompareIds.join(","))}`
+
   return (
     <div className="min-h-screen max-w-6xl mx-auto px-8 py-28">
       <div className="flex justify-between items-center mb-10">
@@ -509,7 +528,29 @@ export default function CarrosPage() {
             </Link>
           </div>
         )}
+
+        <div className="ml-2 flex items-center gap-2">
+          {canCompare ? (
+            <Link
+              href={compareHref}
+              className="rounded-lg border border-black px-4 py-2 text-sm font-medium text-black hover:bg-black hover:text-white transition-colors"
+            >
+              Comparar modelos ({selectedCompareIds.length}/5)
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-400 cursor-not-allowed"
+            >
+              Comparar modelos ({selectedCompareIds.length}/5)
+            </button>
+          )}
+        </div>
       </div>
+      {compareSelectionError ? (
+        <p className="-mt-7 mb-6 text-sm text-amber-700">{compareSelectionError}</p>
+      ) : null}
 
       <div className="mb-8 grid gap-3 md:grid-cols-[1fr_220px_160px]">
         <input
@@ -565,92 +606,102 @@ export default function CarrosPage() {
 
       <div className="grid md:grid-cols-3 gap-8">
         {filteredVehicles.map((version) => (
-          <Link
-            key={version.id}
-            href={`/carros/${version.slug}`}
-            className="group border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out cursor-pointer"
-          >
-            {version.image_url && (
-              <VehicleCardImage
-                src={version.image_url}
-                alt={`${version.modelName} ${version.versionName} ${version.year}`}
+          <div key={version.id} className="relative">
+            <label className="absolute right-3 top-3 z-20 inline-flex items-center gap-2 rounded-md bg-white/90 px-2 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-black"
+                checked={selectedCompareIds.includes(version.id)}
+                onChange={() => toggleCompareSelection(version.id)}
               />
-            )}
+              Comparar
+            </label>
+            <Link
+              href={`/carros/${version.slug}`}
+              className="group block border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out cursor-pointer"
+            >
+              {version.image_url && (
+                <VehicleCardImage
+                  src={version.image_url}
+                  alt={`${version.modelName} ${version.versionName} ${version.year}`}
+                />
+              )}
 
-            <div className="-mt-px bg-gray-700 px-6 py-3">
-              <h2 className="text-lg font-semibold text-white tracking-tight">
-                {version.modelName}
-              </h2>
-            </div>
-
-            <div className="p-6">
-              <UserIdentityBadge
-                name={version.authorName}
-                profileId={version.createdBy}
-                avatarUrl={version.authorAvatarUrl}
-                size="xs"
-                disableProfileLink
-              />
-
-              <p className="mt-2 text-sm font-medium text-gray-900">Ano {version.year}</p>
-
-              <p className="mt-2 text-gray-500 text-sm transition-colors duration-300 group-hover:text-gray-600">
-                <span className="inline-flex items-center gap-1.5">
-                  <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
-                  <span>{version.brandName}</span>
-                </span>
-              </p>
-
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
-                  Classificação: {formatVersionTier(version.versionTier)}
-                </span>
-                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
-                  Carroceria: {formatBodyStyle(version.bodyStyle)}
-                </span>
-                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
-                  {version.engine} · {version.transmission}
-                </span>
+              <div className="-mt-px bg-gray-700 px-6 py-3">
+                <h2 className="text-lg font-semibold text-white tracking-tight">
+                  {version.modelName}
+                </h2>
               </div>
 
-              <p className="mt-3 text-gray-500 text-xs transition-colors duration-300 group-hover:text-gray-600">
-                Versão: <span className="text-gray-700">{version.versionName || "Não informada"}</span>
-              </p>
+              <div className="p-6">
+                <UserIdentityBadge
+                  name={version.authorName}
+                  profileId={version.createdBy}
+                  avatarUrl={version.authorAvatarUrl}
+                  size="xs"
+                  disableProfileLink
+                />
 
-              <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">
-                Combustível:{" "}
-                {version.fuelTypes.length
-                  ? version.fuelTypes
-                      .map((fuel) => {
-                        const map: Record<string, string> = {
-                          gasolina: "Gasolina",
-                          etanol: "Etanol",
-                          diesel: "Diesel",
-                          eletrico: "Elétrico",
-                          hibrido: "Híbrido",
-                          gnv: "GNV",
-                        }
-                        return map[fuel.toLowerCase()] ?? fuel
-                      })
-                      .join(" / ")
-                  : "Não informado"}
-              </p>
+                <p className="mt-2 text-sm font-medium text-gray-900">Ano {version.year}</p>
 
-              <div className="mt-3">
-                <StarRating rating={version.ratingCount > 0 ? (version.rating ?? 0) : 0} showValue={version.ratingCount > 0} />
-                <p className="mt-1 text-xs text-gray-500">
-                  {version.ratingCount > 0
-                    ? `${version.ratingCount} ${version.ratingCount === 1 ? "avaliação" : "avaliações"}`
-                    : "Ainda não há avaliações suficientes para este modelo."}
+                <p className="mt-2 text-gray-500 text-sm transition-colors duration-300 group-hover:text-gray-600">
+                  <span className="inline-flex items-center gap-1.5">
+                    <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
+                    <span>{version.brandName}</span>
+                  </span>
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                    Classificação: {formatVersionTier(version.versionTier)}
+                  </span>
+                  <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                    Carroceria: {formatBodyStyle(version.bodyStyle)}
+                  </span>
+                  <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-gray-700">
+                    {version.engine} · {version.transmission}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-gray-500 text-xs transition-colors duration-300 group-hover:text-gray-600">
+                  Versão: <span className="text-gray-700">{version.versionName || "Não informada"}</span>
+                </p>
+
+                <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">
+                  Combustível:{" "}
+                  {version.fuelTypes.length
+                    ? version.fuelTypes
+                        .map((fuel) => {
+                          const map: Record<string, string> = {
+                            gasolina: "Gasolina",
+                            etanol: "Etanol",
+                            diesel: "Diesel",
+                            eletrico: "Elétrico",
+                            hibrido: "Híbrido",
+                            gnv: "GNV",
+                          }
+                          return map[fuel.toLowerCase()] ?? fuel
+                        })
+                        .join(" / ")
+                    : "Não informado"}
+                </p>
+
+                <div className="mt-3">
+                  <StarRating rating={version.ratingCount > 0 ? (version.rating ?? 0) : 0} showValue={version.ratingCount > 0} />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {version.ratingCount > 0
+                      ? `${version.ratingCount} ${version.ratingCount === 1 ? "avaliação" : "avaliações"}`
+                      : "Ainda não há avaliações suficientes para este modelo."}
+                  </p>
+                </div>
+
+                <p className="mt-2 text-sm text-gray-600 line-clamp-2">
+                  <span className="font-medium text-gray-800">Ponto em destaque:</span>{" "}
+                  {version.topPositive ?? "Comunidade em crescimento para este modelo."}
                 </p>
               </div>
-
-              <p className="mt-2 text-sm text-gray-600 line-clamp-2">
-                <span className="font-medium text-gray-800">Ponto em destaque:</span>{" "}
-                {version.topPositive ?? "Comunidade em crescimento para este modelo."}
-              </p>
-            </div>
-          </Link>
+            </Link>
+          </div>
         ))}
       </div>
 
