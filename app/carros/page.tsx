@@ -121,13 +121,19 @@ export default function CarrosPage() {
     if (typeof window === "undefined") return
 
     let hasVehiclesCache = false
+    let cachedVehicles: EnrichedVehicle[] | null = null
+    let cachedFilters: {
+      searchTerm?: string
+      selectedBrand?: string
+      selectedYear?: string
+    } | null = null
+
     const rawVehicles = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
     if (rawVehicles) {
       try {
         const parsed = JSON.parse(rawVehicles) as EnrichedVehicle[]
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setVehicles(parsed)
-          setLoadingVehicles(false)
+          cachedVehicles = parsed
           hasVehiclesCache = true
         }
       } catch {
@@ -138,17 +144,28 @@ export default function CarrosPage() {
     const rawFilters = window.sessionStorage.getItem(FILTERS_CACHE_KEY)
     if (rawFilters) {
       try {
-        const parsed = JSON.parse(rawFilters) as {
+        cachedFilters = JSON.parse(rawFilters) as {
           searchTerm?: string
           selectedBrand?: string
           selectedYear?: string
         }
-        if (typeof parsed.searchTerm === "string") setSearchTerm(parsed.searchTerm)
-        if (typeof parsed.selectedBrand === "string") setSelectedBrand(parsed.selectedBrand)
-        if (typeof parsed.selectedYear === "string") setSelectedYear(parsed.selectedYear)
       } catch {
         window.sessionStorage.removeItem(FILTERS_CACHE_KEY)
       }
+    }
+
+    if (cachedVehicles || cachedFilters) {
+      queueMicrotask(() => {
+        if (cachedVehicles) {
+          setVehicles(cachedVehicles)
+          setLoadingVehicles(false)
+        }
+        if (cachedFilters) {
+          if (typeof cachedFilters.searchTerm === "string") setSearchTerm(cachedFilters.searchTerm)
+          if (typeof cachedFilters.selectedBrand === "string") setSelectedBrand(cachedFilters.selectedBrand)
+          if (typeof cachedFilters.selectedYear === "string") setSelectedYear(cachedFilters.selectedYear)
+        }
+      })
     }
 
     hadVehiclesCacheOnLoad.current = hasVehiclesCache

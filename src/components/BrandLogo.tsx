@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 type BrandLogoProps = {
   src: string | null
@@ -9,13 +9,10 @@ type BrandLogoProps = {
 }
 
 export default function BrandLogo({ src, brandName, className = "h-5 w-5" }: BrandLogoProps) {
-  const [loaded, setLoaded] = useState(false)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    setLoaded(false)
-    setFailed(false)
-  }, [src])
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const loaded = Boolean(src) && loadedSrc === src
+  const failed = !src || failedSrc === src
 
   if (!src || failed) {
     return (
@@ -43,8 +40,14 @@ export default function BrandLogo({ src, brandName, className = "h-5 w-5" }: Bra
           loaded ? "opacity-100" : "opacity-0"
         }`}
         loading="lazy"
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
+        onLoad={() => {
+          if (!src) return
+          setLoadedSrc(src)
+        }}
+        onError={() => {
+          if (!src) return
+          setFailedSrc(src)
+        }}
       />
     </span>
   )

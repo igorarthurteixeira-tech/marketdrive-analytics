@@ -3,185 +3,307 @@
 import { useAuth } from "@/components/AuthProvider"
 import { supabase } from "@/lib/supabaseClient"
 import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { X } from "lucide-react"
 
-export default function Assinatura() {
+type PlanCard = {
+  key: "hobbie" | "entusiasta" | "profissional"
+  name: string
+  price: string
+  summary: string
+  highlight?: boolean
+  features: { text: string; enabled: boolean }[]
+}
+
+const plans: PlanCard[] = [
+  {
+    key: "hobbie",
+    name: "Hobbie",
+    price: "R$19/mês",
+    summary: "Para acompanhar e participar das discussões.",
+    features: [
+      { text: "Acesso limitado por quantidade", enabled: true },
+      { text: "Acesso com atraso", enabled: true },
+      { text: "Comentar", enabled: true },
+      { text: "Responder comentários", enabled: true },
+      { text: "Pedir por conteúdo", enabled: true },
+      { text: "Inserir dados estruturados", enabled: false },
+      { text: "Inserir experiência pessoal", enabled: false },
+      { text: "Criar novo modelo", enabled: false },
+    ],
+  },
+  {
+    key: "entusiasta",
+    name: "Entusiasta",
+    price: "R$39/mês",
+    summary: "Para contribuir e ter acesso completo.",
+    highlight: true,
+    features: [
+      { text: "Acesso ilimitado", enabled: true },
+      { text: "Acesso imediato + notificações", enabled: true },
+      { text: "Inserir experiência pessoal", enabled: true },
+      { text: "Inserir defeitos crônicos e pontuais", enabled: true },
+      { text: "Inserir pontos positivos", enabled: true },
+      { text: "Dar dicas de solução", enabled: true },
+      { text: "Autoria atribuída", enabled: true },
+      { text: "Criar novo modelo", enabled: false },
+    ],
+  },
+  {
+    key: "profissional",
+    name: "Profissional",
+    price: "R$79/mês",
+    summary: "Para estruturar e expandir a base.",
+    features: [
+      { text: "Tudo do Entusiasta", enabled: true },
+      { text: "Inserir novo modelo", enabled: true },
+      { text: "Ser primeiro avaliador", enabled: true },
+      { text: "Autoria destacada", enabled: true },
+      { text: "Maior peso na validação", enabled: true },
+      { text: "Acesso antecipado total", enabled: true },
+    ],
+  },
+]
+
+export default function AssinaturaPage() {
   const { session } = useAuth()
   const router = useRouter()
-
   const [currentPlan, setCurrentPlan] = useState<string | null>(null)
-  const [loading, setLoading] = useState<string | null>(null)
+  const [loadingPlanKey, setLoadingPlanKey] = useState<string | null>(null)
+  const [openingPortal, setOpeningPortal] = useState(false)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [feedbackType, setFeedbackType] = useState<"success" | "error" | null>(null)
 
   useEffect(() => {
     const fetchPlan = async () => {
       if (!session?.user) return
-
       const { data } = await supabase
         .from("profiles")
         .select("plan")
         .eq("id", session.user.id)
         .single()
 
-      if (data) {
-        setCurrentPlan(data.plan)
-      }
+      setCurrentPlan((data?.plan as string | null) ?? null)
     }
 
-    fetchPlan()
-  }, [session])
+    void fetchPlan()
+  }, [session?.user])
 
-  const handlePlanChange = async (plan: string) => {
-    if (!session?.user) {
-      router.push("/login")
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const status = new URLSearchParams(window.location.search).get("status")
+    if (status === "success") {
+      setFeedback("Pagamento confirmado. Seu plano será atualizado em instantes.")
+      setFeedbackType("success")
       return
     }
-
-    setLoading(plan)
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({ plan })
-      .eq("id", session.user.id)
-
-    if (!error) {
-      setCurrentPlan(plan)
+    if (status === "canceled") {
+      setFeedback("Pagamento cancelado. Você pode tentar novamente quando quiser.")
+      setFeedbackType("error")
+      return
     }
+    setFeedback(null)
+    setFeedbackType(null)
+  }, [])
 
-    setLoading(null)
+  useEffect(() => {
+    if (!feedback) return
+    const timer = window.setTimeout(() => {
+      setFeedback(null)
+      setFeedbackType(null)
+    }, 7000)
+    return () => window.clearTimeout(timer)
+  }, [feedback])
+
+  const hasActivePlan = useMemo(
+    () => Boolean(currentPlan && ["hobbie", "entusiasta", "profissional"].includes(currentPlan)),
+    [currentPlan]
+  )
+
+  const withAuthHeader = async () => {
+    const token = session?.access_token
+    if (!token) {
+      router.push("/login")
+      return null
+    }
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    }
+  }
+
+  const startCheckout = async (plan: PlanCard["key"]) => {
+    const headers = await withAuthHeader()
+    if (!headers) return
+
+    setLoadingPlanKey(plan)
+    setFeedback(null)
+    setFeedbackType(null)
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ plan }),
+      })
+      const payload = (await response.json()) as { url?: string; error?: string }
+      if (!response.ok || !payload.url) {
+        setFeedback(payload.error ?? "Não foi possível iniciar o pagamento.")
+        setFeedbackType("error")
+        return
+      }
+      window.location.href = payload.url
+    } catch {
+      setFeedback("Erro inesperado ao iniciar o checkout.")
+      setFeedbackType("error")
+    } finally {
+      setLoadingPlanKey(null)
+    }
+  }
+
+  const openBillingPortal = async () => {
+    const headers = await withAuthHeader()
+    if (!headers) return
+
+    setOpeningPortal(true)
+    setFeedback(null)
+    setFeedbackType(null)
+    try {
+      const response = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers,
+      })
+      const payload = (await response.json()) as { url?: string; error?: string }
+      if (!response.ok || !payload.url) {
+        setFeedback(payload.error ?? "Não foi possível abrir o portal de assinatura.")
+        setFeedbackType("error")
+        return
+      }
+      window.location.href = payload.url
+    } catch {
+      setFeedback("Erro inesperado ao abrir o portal de assinatura.")
+      setFeedbackType("error")
+    } finally {
+      setOpeningPortal(false)
+    }
   }
 
   return (
-    <main className="bg-white min-h-screen">
-
-      {/* HERO DA PÁGINA */}
-      <section className="max-w-6xl mx-auto px-8 pt-32 pb-20 text-center">
-        <h1 className="text-4xl md:text-5xl font-bold mb-6">
-          Escolha seu nível de acesso
-        </h1>
-
-        <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-          A Base Automotiva oferece diferentes níveis de participação e acesso.
-          Escolha o plano ideal para o seu perfil.
+    <main className="min-h-screen bg-white">
+      <section className="mx-auto max-w-6xl px-8 pb-12 pt-32 text-center">
+        <h1 className="mb-6 text-4xl font-bold md:text-5xl">Escolha seu nível de acesso</h1>
+        <p className="mx-auto max-w-2xl text-lg text-gray-600">
+          A Base Automotiva oferece níveis de participação diferentes. Escolha o plano ideal para
+          o seu perfil.
         </p>
+        {hasActivePlan ? (
+          <button
+            type="button"
+            onClick={openBillingPortal}
+            disabled={openingPortal}
+            className="mt-6 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {openingPortal ? "Abrindo portal..." : "Gerenciar assinatura"}
+          </button>
+        ) : null}
       </section>
 
-      {/* PLANOS */}
-      <section className="max-w-6xl mx-auto px-8 pb-32">
-        <div className="grid md:grid-cols-3 gap-10 items-stretch">
+      <section className="mx-auto max-w-6xl px-8 pb-24">
+        <div className="grid items-stretch gap-10 md:grid-cols-3">
+          {plans.map((plan) => {
+            const isCurrent = currentPlan === plan.key
+            const isLoading = loadingPlanKey === plan.key
 
-          {/* HOBBIE */}
-          <div className="border border-gray-200 rounded-2xl p-8 flex flex-col">
-            <h2 className="text-2xl font-semibold mb-2">Hobbie</h2>
+            return (
+              <div
+                key={plan.key}
+                className={`relative flex flex-col rounded-2xl p-8 ${
+                  isCurrent
+                    ? "border-2 border-green-500 bg-green-50/30 shadow-lg"
+                    : plan.highlight
+                      ? "border-2 border-black shadow-lg"
+                      : "border border-gray-200"
+                }`}
+              >
+                {isCurrent ? (
+                  <div className="absolute right-3 top-3 rounded-full border border-green-300 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-green-700">
+                    Plano atual
+                  </div>
+                ) : null}
+                {plan.highlight ? (
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 rounded-full bg-black px-4 py-1 text-sm text-white">
+                    Mais escolhido
+                  </div>
+                ) : null}
 
-            <p className="text-gray-500 mb-6">
-              Para quem deseja acompanhar e participar das discussões.
-            </p>
+                <h2 className="mb-2 text-2xl font-semibold">{plan.name}</h2>
+                <p className="mb-6 text-gray-500">{plan.summary}</p>
+                <div className="mb-8 text-3xl font-bold">{plan.price}</div>
 
-            <div className="text-3xl font-bold mb-8">
-              R$19<span className="text-base font-medium text-gray-500">/mês</span>
-            </div>
+                <ul className="flex-1 space-y-3 text-sm text-gray-700">
+                  {plan.features.map((feature) => (
+                    <li key={feature.text} className={feature.enabled ? "" : "text-gray-400"}>
+                      {feature.enabled ? "✔" : "✖"} {feature.text}
+                    </li>
+                  ))}
+                </ul>
 
-            <ul className="space-y-4 text-gray-700 flex-1">
-              <li>✔ Acesso limitado por quantidade</li>
-              <li>✔ Acesso com atraso</li>
-              <li>✔ Comentar</li>
-              <li>✔ Responder comentários</li>
-              <li>✔ Pedir por conteúdo</li>
-              <li className="text-gray-400">✖ Inserir dados estruturados</li>
-              <li className="text-gray-400">✖ Inserir experiência pessoal</li>
-              <li className="text-gray-400">✖ Criar novo modelo</li>
-            </ul>
-
-            <button
-              onClick={() => handlePlanChange("hobbie")}
-              disabled={loading === "hobbie"}
-              className="mt-10 bg-black text-white py-3 rounded-lg hover:bg-gray-900 transition"
-            >
-              {currentPlan === "hobbie"
-                ? "Plano atual"
-                : loading === "hobbie"
-                ? "Atualizando..."
-                : "Assinar Hobbie"}
-            </button>
-          </div>
-
-          {/* ENTUSIASTA */}
-          <div className="border-2 border-black rounded-2xl p-8 flex flex-col shadow-lg relative">
-            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-4 py-1 rounded-full">
-              Mais escolhido
-            </div>
-
-            <h2 className="text-2xl font-semibold mb-2">Entusiasta</h2>
-
-            <p className="text-gray-500 mb-6">
-              Para quem deseja contribuir e ter acesso completo.
-            </p>
-
-            <div className="text-3xl font-bold mb-8">
-              R$39<span className="text-base font-medium text-gray-500">/mês</span>
-            </div>
-
-            <ul className="space-y-4 text-gray-700 flex-1">
-              <li>✔ Acesso ilimitado</li>
-              <li>✔ Acesso imediato + notificações</li>
-              <li>✔ Inserir experiência pessoal</li>
-              <li>✔ Inserir defeitos crônicos e pontuais</li>
-              <li>✔ Inserir pontos positivos</li>
-              <li>✔ Dar dicas de solução</li>
-              <li>✔ Autoria atribuída</li>
-              <li className="text-gray-400">✖ Criar novo modelo</li>
-            </ul>
-
-            <button
-              onClick={() => handlePlanChange("entusiasta")}
-              disabled={loading === "entusiasta"}
-              className="mt-10 bg-black text-white py-3 rounded-lg hover:bg-gray-900 transition"
-            >
-              {currentPlan === "entusiasta"
-                ? "Plano atual"
-                : loading === "entusiasta"
-                ? "Atualizando..."
-                : "Assinar Entusiasta"}
-            </button>
-          </div>
-
-          {/* PROFISSIONAL */}
-          <div className="border border-gray-200 rounded-2xl p-8 flex flex-col">
-            <h2 className="text-2xl font-semibold mb-2">Profissional</h2>
-
-            <p className="text-gray-500 mb-6">
-              Para quem deseja estruturar e expandir a base.
-            </p>
-
-            <div className="text-3xl font-bold mb-8">
-              R$79<span className="text-base font-medium text-gray-500">/mês</span>
-            </div>
-
-            <ul className="space-y-4 text-gray-700 flex-1">
-              <li>✔ Tudo do Entusiasta</li>
-              <li>✔ Inserir novo modelo</li>
-              <li>✔ Ser primeiro avaliador</li>
-              <li>✔ Autoria destacada</li>
-              <li>✔ Maior peso na validação</li>
-              <li>✔ Acesso antecipado total</li>
-            </ul>
-
-            <button
-              onClick={() => handlePlanChange("profissional")}
-              disabled={loading === "profissional"}
-              className="mt-10 bg-black text-white py-3 rounded-lg hover:bg-gray-900 transition"
-            >
-              {currentPlan === "profissional"
-                ? "Plano atual"
-                : loading === "profissional"
-                ? "Atualizando..."
-                : "Assinar Profissional"}
-            </button>
-          </div>
-
+                <button
+                  type="button"
+                  onClick={() => startCheckout(plan.key)}
+                  disabled={isLoading}
+                  className="mt-10 rounded-lg bg-black py-3 text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isCurrent
+                    ? "Plano atual"
+                    : isLoading
+                      ? "Redirecionando..."
+                      : `Assinar ${plan.name}`}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </section>
 
+      {feedback ? (
+        <div className="fixed right-4 top-[86px] z-[70] w-[360px] max-w-[calc(100vw-2rem)]">
+          <div
+            className={`rounded-xl border bg-white/95 p-3 shadow-lg backdrop-blur-sm ${
+              feedbackType === "success" ? "border-green-200" : "border-red-200"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p
+                className={`text-sm font-medium ${
+                  feedbackType === "success" ? "text-green-800" : "text-red-700"
+                }`}
+              >
+                {feedback}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFeedback(null)
+                  setFeedbackType(null)
+                }}
+                className="rounded-md p-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Fechar aviso"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200">
+              <div
+                key={feedback}
+                className={`toast-timer-bar h-full w-full rounded-full ${
+                  feedbackType === "success" ? "bg-green-500" : "bg-red-500"
+                }`}
+                style={{ animationDuration: "7000ms" }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }
