@@ -442,6 +442,16 @@ export default function NovoCarro() {
         }
 
         if (vehicleError || !vehicle) {
+          const duplicateModel =
+            vehicleError?.code === "23505" ||
+            /vehicles_slug_key|duplicate key/i.test(vehicleError?.message ?? "")
+
+          if (duplicateModel) {
+            throw new Error(
+              "Esse modelo já existe. Troque para 'Apenas nova versão' e selecione o modelo existente."
+            )
+          }
+
           throw new Error(
             `Não foi possível criar o modelo. ${
               vehicleError?.message ?? "Verifique duplicidade."
