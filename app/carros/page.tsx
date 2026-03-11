@@ -105,6 +105,22 @@ const toBrandLogoSrc = (logoPath: string | null | undefined, brandName: string) 
   return slug ? `/brands/${slug}.png` : null
 }
 
+const formatVersionTier = (tier: string | null | undefined) => {
+  if (!tier) return "Não informada"
+  const normalized = tier.trim().toLowerCase()
+  const labels: Record<string, string> = {
+    entrada: "Entrada",
+    "entrada intermediaria": "Entrada intermediária",
+    intermediaria: "Intermediária",
+    "intermediaria luxo": "Intermediária luxo",
+    luxo: "Luxo",
+    "topo de linha": "Topo de linha",
+    esportivo: "Esportivo",
+    "esportivo de luxo": "Esportivo de luxo",
+  }
+  return labels[normalized] ?? tier
+}
+
 export default function CarrosPage() {
   const { session } = useAuth()
 
@@ -550,7 +566,7 @@ export default function CarrosPage() {
                   <BrandLogo src={version.brandLogoUrl} brandName={version.brandName} className="h-4 w-4" />
                   <span>{version.brandName}</span>
                 </span>{" "}
-                • Intermediaria • {version.engine} {version.transmission}
+                • {formatVersionTier(version.versionTier)} • {version.engine} {version.transmission}
               </p>
 
               <p className="text-gray-500 text-xs mt-1 transition-colors duration-300 group-hover:text-gray-600">
