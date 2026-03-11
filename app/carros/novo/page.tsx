@@ -56,9 +56,10 @@ function generateVersionSlug(
   brand: string,
   model: string,
   versionName: string,
-  year: string
+  year: string,
+  transmission: string
 ) {
-  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${year}`
+  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${normalize(transmission)}-${year}`
 }
 
 function toBrandLogoSrc(brand: Brand | null) {
@@ -465,7 +466,8 @@ export default function NovoCarro() {
           brand.name,
           name,
           versionName,
-          year
+          year,
+          transmission
         )
 
         let { data: createdVersion, error: versionError } = await supabase
@@ -548,6 +550,16 @@ export default function NovoCarro() {
         }
 
         if (versionError || !createdVersion) {
+          const duplicateVersion =
+            versionError?.code === "23505" ||
+            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci/i.test(
+              versionError?.message ?? ""
+            )
+          if (duplicateVersion) {
+            throw new Error(
+              "Já existe uma versão com este nome, ano e transmissão para esse modelo."
+            )
+          }
           throw new Error(
             `Modelo criado, mas falhou ao criar a versão. ${
               versionError?.message ?? "Verifique duplicidade e campos obrigatórios."
@@ -566,7 +578,8 @@ export default function NovoCarro() {
           selectedVehicle.brandName,
           selectedVehicle.name,
           versionName,
-          year
+          year,
+          transmission
         )
 
         let { data: createdVersion, error: versionError } = await supabase
@@ -647,6 +660,16 @@ export default function NovoCarro() {
         }
 
         if (versionError || !createdVersion) {
+          const duplicateVersion =
+            versionError?.code === "23505" ||
+            /duplicate key|uq_vehicle_versions_vehicle_version_year_ci|uq_vehicle_versions_vehicle_version_year_transmission_ci/i.test(
+              versionError?.message ?? ""
+            )
+          if (duplicateVersion) {
+            throw new Error(
+              "Já existe uma versão com este nome, ano e transmissão para esse modelo."
+            )
+          }
           throw new Error(
             `Não foi possível criar a versão. ${
               versionError?.message ?? "Verifique duplicidade."

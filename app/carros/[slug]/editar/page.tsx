@@ -109,9 +109,10 @@ function generateVersionSlug(
   brand: string,
   model: string,
   versionName: string,
-  year: string
+  year: string,
+  transmission: string
 ) {
-  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${year}`
+  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${normalize(transmission)}-${year}`
 }
 
 function toBrandLogoSrc(brand: Brand | null) {
@@ -670,7 +671,8 @@ export default function Page() {
         selectedBrand.name,
         name,
         versionName,
-        year
+        year,
+        transmission
       )
       // Preserve current URL slug to avoid breaking existing links.
       const versionSlug = slug || generatedVersionSlug
