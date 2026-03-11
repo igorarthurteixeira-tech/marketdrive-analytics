@@ -48,6 +48,18 @@ function normalize(text: string) {
     .replace(/^-|-$/g, "")
 }
 
+function detectTransmissionType(transmission: string) {
+  const normalized = transmission
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
+  if (normalized.includes("manual")) return "manual"
+  if (normalized.includes("automatizad")) return "automatizada"
+  if (normalized.includes("automatic")) return "automatica"
+  return normalize(transmission) || "sem-transmissao"
+}
+
 function generateModelSlug(brand: string, model: string) {
   return `${normalize(brand)}-${normalize(model)}`
 }
@@ -59,7 +71,8 @@ function generateVersionSlug(
   year: string,
   transmission: string
 ) {
-  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${normalize(transmission)}-${year}`
+  const transmissionType = detectTransmissionType(transmission)
+  return `${normalize(brand)}-${normalize(model)}-${normalize(versionName)}-${transmissionType}-${year}`
 }
 
 function toBrandLogoSrc(brand: Brand | null) {
