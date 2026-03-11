@@ -13,6 +13,7 @@ const VERSION_TIERS = [
   "intermediaria",
   "intermediaria luxo",
   "luxo",
+  "topo de linha",
   "esportivo",
   "esportivo de luxo",
 ] as const
