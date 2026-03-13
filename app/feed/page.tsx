@@ -3,10 +3,16 @@
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Check, MessageCircle, MessageSquareReply, Newspaper, Pencil, SquarePen, Trash2, X } from "lucide-react"
+import { Check, Flag, MessageCircle, MessageSquareReply, Newspaper, Pencil, SquarePen, Trash2, X } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { useAuth } from "@/components/AuthProvider"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
+import {
+  MODERATION_REASON_OPTIONS,
+  MODERATION_STATUS_LABEL,
+  type ModerationContentType,
+  type ModerationReason,
+} from "@/lib/moderation"
 
 const VEHICLE_STORAGE_URL =
   "https://njitzfpyhwcqoaluuvqo.supabase.co/storage/v1/object/public/vehicle-images/"
@@ -30,6 +36,8 @@ type ProfileRow = {
   name: string | null
   username?: string | null
   avatar_url?: string | null
+  is_consultant_verified?: boolean | null
+  is_founder?: boolean | null
 }
 
 type VehicleVersionMini = {
@@ -111,6 +119,7 @@ export default function FeedPage() {
 
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
+  const [infoMessage, setInfoMessage] = useState("")
   const [feedFilter, setFeedFilter] = useState<"all" | "following">("all")
   const [sortMode, setSortMode] = useState<"recent" | "relevant">("recent")
   const [followsEnabled, setFollowsEnabled] = useState(true)
@@ -137,11 +146,20 @@ export default function FeedPage() {
   const [replyDraftByComment, setReplyDraftByComment] = useState<Record<string, string>>({})
   const [activeReplyCommentIdByPost, setActiveReplyCommentIdByPost] = useState<Record<string, string | null>>({})
   const [visibleCommentsCountByPost, setVisibleCommentsCountByPost] = useState<Record<string, number>>({})
+  const [reportTarget, setReportTarget] = useState<{
+    contentType: ModerationContentType
+    contentId: string
+    label: string
+  } | null>(null)
+  const [reportReason, setReportReason] = useState<ModerationReason>("spam")
+  const [reportDetails, setReportDetails] = useState("")
+  const [submittingReport, setSubmittingReport] = useState(false)
 
   useEffect(() => {
     const fetchFeed = async () => {
       setLoading(true)
       setErrorMessage("")
+      setInfoMessage("")
 
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -367,7 +385,7 @@ export default function FeedPage() {
       if (profileIds.length > 0) {
         const profilesRes = await supabase
           .from("profiles")
-          .select("id,name,username,avatar_url")
+          .select("id,name,username,avatar_url,is_consultant_verified,is_founder")
           .in("id", profileIds)
         const map: Record<string, ProfileRow> = {}
         for (const row of (profilesRes.data as ProfileRow[] | null) ?? []) {
@@ -418,14 +436,26 @@ export default function FeedPage() {
         const bVotes = postVotesByPost[b.id] ?? { confirmed: 0, denied: 0, userVote: null }
         const aComments = (postCommentsByPost[a.id] ?? []).length
         const bComments = (postCommentsByPost[b.id] ?? []).length
+        const aAuthor = profilesById[a.author_user_id]
+        const bAuthor = profilesById[b.author_user_id]
 
         const aHours = Math.max(1, (now - new Date(a.created_at).getTime()) / (1000 * 60 * 60))
         const bHours = Math.max(1, (now - new Date(b.created_at).getTime()) / (1000 * 60 * 60))
 
         const aScore =
-          (aVotes.confirmed * 2 + aComments * 1.5 + aVotes.denied * 0.5) / Math.sqrt(aHours)
+          (aVotes.confirmed * 2 +
+            aComments * 1.5 +
+            aVotes.denied * 0.5 +
+            (aAuthor?.is_consultant_verified ? 1.25 : 0) +
+            (aAuthor?.is_founder ? 0.75 : 0)) /
+          Math.sqrt(aHours)
         const bScore =
-          (bVotes.confirmed * 2 + bComments * 1.5 + bVotes.denied * 0.5) / Math.sqrt(bHours)
+          (bVotes.confirmed * 2 +
+            bComments * 1.5 +
+            bVotes.denied * 0.5 +
+            (bAuthor?.is_consultant_verified ? 1.25 : 0) +
+            (bAuthor?.is_founder ? 0.75 : 0)) /
+          Math.sqrt(bHours)
 
         if (bScore !== aScore) return bScore - aScore
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -444,6 +474,7 @@ export default function FeedPage() {
     followingIds,
     postCommentsByPost,
     postVotesByPost,
+    profilesById,
     posts,
     session?.user?.id,
     sortMode,
@@ -566,6 +597,58 @@ export default function FeedPage() {
     }
 
     setSubmittingCommentPostId(null)
+  }
+
+  const handleOpenReport = (
+    contentType: ModerationContentType,
+    contentId: string,
+    label: string
+  ) => {
+    setReportTarget({ contentType, contentId, label })
+    setReportReason("spam")
+    setReportDetails("")
+    setErrorMessage("")
+  }
+
+  const handleSubmitReport = async () => {
+    if (!session?.user?.id) {
+      setErrorMessage("Faça login para denunciar.")
+      return
+    }
+    if (!reportTarget || submittingReport) return
+
+    setSubmittingReport(true)
+    setErrorMessage("")
+    setInfoMessage("")
+
+    const result = await supabase.rpc("moderation_submit_report", {
+      p_content_type: reportTarget.contentType,
+      p_content_id: reportTarget.contentId,
+      p_reason: reportReason,
+      p_details: reportDetails.trim() || null,
+    })
+
+    if (result.error) {
+      setErrorMessage(`Falha ao enviar denúncia: ${result.error.message}`)
+      setSubmittingReport(false)
+      return
+    }
+
+    const row = Array.isArray(result.data) ? result.data[0] : null
+    const grouped = Boolean(row?.grouped)
+    const alreadyReported = Boolean(row?.already_reported)
+    if (alreadyReported) {
+      setInfoMessage("Você já denunciou este conteúdo pelo mesmo motivo.")
+    } else {
+      setInfoMessage(
+        grouped
+          ? "Denúncia anexada a um caso em andamento. Você será notificado sobre o andamento."
+          : `Denúncia ${MODERATION_STATUS_LABEL.enviada.toLowerCase()}. Você será notificado sobre o andamento.`
+      )
+    }
+
+    setReportTarget(null)
+    setSubmittingReport(false)
   }
 
   const submitPostReply = async (postId: string, parentCommentId: string) => {
@@ -780,6 +863,11 @@ export default function FeedPage() {
           {errorMessage}
         </section>
       ) : null}
+      {infoMessage ? (
+        <section className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+          {infoMessage}
+        </section>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -854,11 +942,27 @@ export default function FeedPage() {
                         name={card.authorName}
                         profileId={card.post.author_user_id}
                         avatarUrl={card.authorAvatar}
+                        badgeText={toProfileBadgeText(profilesById[card.post.author_user_id])}
                         size="sm"
                       />
-                      <span className="text-xs text-gray-500">
-                        {new Date(card.post.created_at).toLocaleString("pt-BR")}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">
+                          {new Date(card.post.created_at).toLocaleString("pt-BR")}
+                        </span>
+                        {session?.user?.id && session.user.id !== card.post.author_user_id ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleOpenReport("user_post", card.post.id, "Publicação da comunidade")
+                            }
+                            className="inline-flex items-center text-gray-600 hover:text-black"
+                            title="Denunciar publicação"
+                            aria-label="Denunciar publicação"
+                          >
+                            <Flag size={13} />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
 
                     <p className="mt-2 text-xs uppercase tracking-[0.08em] text-gray-500">
@@ -1001,6 +1105,7 @@ export default function FeedPage() {
                                 name={profile?.name ?? "Usuario"}
                                 profileId={comment.user_id}
                                 avatarUrl={profile?.avatar_url ?? null}
+                                badgeText={toProfileBadgeText(profile)}
                                 size="xs"
                               />
                               <div className="flex items-center gap-2">
@@ -1021,6 +1126,23 @@ export default function FeedPage() {
                                 >
                                   <MessageSquareReply size={14} />
                                 </button>
+                                {session?.user?.id !== comment.user_id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleOpenReport(
+                                        "user_post_comment",
+                                        comment.id,
+                                        "Comentário em publicação"
+                                      )
+                                    }
+                                    title="Denunciar comentário"
+                                    aria-label="Denunciar comentário"
+                                    className="inline-flex items-center text-gray-600 hover:text-black"
+                                  >
+                                    <Flag size={13} />
+                                  </button>
+                                ) : null}
                                 {session?.user?.id === comment.user_id ? (
                                   <button
                                     type="button"
@@ -1122,6 +1244,7 @@ export default function FeedPage() {
                                           name={replyProfile?.name ?? "Usuario"}
                                           profileId={reply.user_id}
                                           avatarUrl={replyProfile?.avatar_url ?? null}
+                                          badgeText={toProfileBadgeText(replyProfile)}
                                           size="xs"
                                         />
                                         <div className="flex items-center gap-2">
@@ -1143,6 +1266,23 @@ export default function FeedPage() {
                                           >
                                             <MessageSquareReply size={12} />
                                           </button>
+                                          {session?.user?.id !== reply.user_id ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleOpenReport(
+                                                  "user_post_comment",
+                                                  reply.id,
+                                                  "Resposta em publicação"
+                                                )
+                                              }
+                                              title="Denunciar resposta"
+                                              aria-label="Denunciar resposta"
+                                              className="inline-flex items-center text-gray-600 hover:text-black"
+                                            >
+                                              <Flag size={12} />
+                                            </button>
+                                          ) : null}
                                           {session?.user?.id === reply.user_id ? (
                                             <button
                                               type="button"
@@ -1331,6 +1471,84 @@ export default function FeedPage() {
           Carregando feed...
         </section>
       ) : null}
+
+      {reportTarget ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Denunciar conteúdo</h3>
+                <p className="mt-1 text-xs text-gray-600">{reportTarget.label}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReportTarget(null)}
+                className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Fechar denúncia"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-[0.08em] text-gray-600">
+                  Motivo
+                </label>
+                <select
+                  value={reportReason}
+                  onChange={(event) => setReportReason(event.target.value as ModerationReason)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {MODERATION_REASON_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-[0.08em] text-gray-600">
+                  Detalhes (opcional)
+                </label>
+                <textarea
+                  value={reportDetails}
+                  onChange={(event) => setReportDetails(event.target.value)}
+                  rows={4}
+                  placeholder="Descreva o contexto da denúncia"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setReportTarget(null)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmitReport()}
+                disabled={submittingReport}
+                className="rounded-lg bg-black px-3 py-2 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-60"
+              >
+                {submittingReport ? "Enviando..." : "Enviar denúncia"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
+}
+
+const toProfileBadgeText = (profile: ProfileRow | undefined) => {
+  if (!profile) return null
+  if (profile.is_founder) return "Fundador"
+  if (profile.is_consultant_verified) return "Consultor verificado"
+  return null
 }

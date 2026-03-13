@@ -29,6 +29,9 @@ type ProfileData = {
   focus: string | null
   favorite_brands: string[]
   reference_vehicles: string[]
+  is_consultant_verified: boolean
+  is_founder: boolean
+  launch_bonus_expires_at: string | null
 }
 
 type ProfileRowExtended = {
@@ -48,6 +51,9 @@ type ProfileRowExtended = {
   focus?: string | null
   favorite_brands?: string[] | null
   reference_vehicles?: string[] | null
+  is_consultant_verified?: boolean | null
+  is_founder?: boolean | null
+  launch_bonus_expires_at?: string | null
 }
 
 type ProfileRowFallback = {
@@ -284,7 +290,10 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
           profile_level,
           focus,
           favorite_brands,
-          reference_vehicles
+          reference_vehicles,
+          is_consultant_verified,
+          is_founder,
+          launch_bonus_expires_at
         `,
         `
           id,
@@ -411,6 +420,16 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
           "reference_vehicles" in row && Array.isArray(row.reference_vehicles)
             ? row.reference_vehicles.filter(Boolean)
             : (previousCached?.reference_vehicles ?? []),
+        is_consultant_verified:
+          "is_consultant_verified" in row
+            ? row.is_consultant_verified === true
+            : (previousCached?.is_consultant_verified ?? false),
+        is_founder:
+          "is_founder" in row ? row.is_founder === true : (previousCached?.is_founder ?? false),
+        launch_bonus_expires_at:
+          "launch_bonus_expires_at" in row
+            ? (row.launch_bonus_expires_at ?? null)
+            : (previousCached?.launch_bonus_expires_at ?? null),
       }
 
       profileMemoryCache.set(profileId, normalized)
@@ -1081,6 +1100,21 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
                 Nivel: {profile.profile_level}
               </span>
             ) : null}
+            {profile.is_consultant_verified ? (
+              <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-emerald-700">
+                Consultor verificado
+              </span>
+            ) : null}
+            {profile.is_founder ? (
+              <span className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-amber-700">
+                Fundador
+              </span>
+            ) : null}
+            {profile.launch_bonus_expires_at ? (
+              <span className="rounded-full border border-blue-300 bg-blue-50 px-3 py-1 text-blue-700">
+                Bônus até {new Date(profile.launch_bonus_expires_at).toLocaleDateString("pt-BR")}
+              </span>
+            ) : null}
             <span className="rounded-full border border-gray-300 px-3 py-1 text-gray-700">
               Seguidores: {followersCount}
             </span>
@@ -1118,6 +1152,12 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
               >
                 <SquarePen size={15} />
                 Nova postagem
+              </Link>
+              <Link
+                href="/perfil/denuncias"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                Minhas denúncias
               </Link>
             </div>
           ) : null}

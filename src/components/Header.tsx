@@ -1615,6 +1615,15 @@ export default function Header() {
                   Marcas
                 </Link>
               ) : null}
+              {user && profilePlan === "profissional" ? (
+                <Link
+                  href="/admin/moderacao"
+                  onClick={() => setMenuOpen(false)}
+                  className="mt-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-black transition-all duration-150 hover:translate-x-0.5"
+                >
+                  Moderação
+                </Link>
+              ) : null}
 
               {!user ? (
                 <Link
