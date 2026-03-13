@@ -11,6 +11,16 @@ import UserIdentityBadge from "@/components/UserIdentityBadge"
 
 const VEHICLES_CACHE_KEY = "carros:vehicles:v1"
 const FILTERS_CACHE_KEY = "carros:filters:v1"
+const VERSION_TIER_ORDER = [
+  "entrada",
+  "entrada intermediaria",
+  "intermediaria",
+  "intermediaria luxo",
+  "luxo",
+  "topo de linha",
+  "esportivo",
+  "esportivo de luxo",
+]
 
 type EnrichedVehicle = {
   id: string
@@ -143,6 +153,13 @@ const formatBodyStyle = (value: string | null | undefined) => {
   return labels[normalized] ?? value
 }
 
+const normalizeTierKey = (value: string | null | undefined) =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+
 export default function CarrosPage() {
   const { session } = useAuth()
 
@@ -153,6 +170,7 @@ export default function CarrosPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedBrand, setSelectedBrand] = useState("all")
   const [selectedYear, setSelectedYear] = useState("all")
+  const [versionTierSort, setVersionTierSort] = useState<"tier_asc" | "tier_desc">("tier_asc")
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareSelectionError, setCompareSelectionError] = useState("")
   const hadVehiclesCacheOnLoad = useRef(false)
@@ -166,6 +184,7 @@ export default function CarrosPage() {
       searchTerm?: string
       selectedBrand?: string
       selectedYear?: string
+      versionTierSort?: "tier_asc" | "tier_desc"
     } | null = null
 
     const rawVehicles = window.sessionStorage.getItem(VEHICLES_CACHE_KEY)
@@ -188,6 +207,7 @@ export default function CarrosPage() {
           searchTerm?: string
           selectedBrand?: string
           selectedYear?: string
+          versionTierSort?: "tier_asc" | "tier_desc"
         }
       } catch {
         window.sessionStorage.removeItem(FILTERS_CACHE_KEY)
@@ -204,6 +224,9 @@ export default function CarrosPage() {
           if (typeof cachedFilters.searchTerm === "string") setSearchTerm(cachedFilters.searchTerm)
           if (typeof cachedFilters.selectedBrand === "string") setSelectedBrand(cachedFilters.selectedBrand)
           if (typeof cachedFilters.selectedYear === "string") setSelectedYear(cachedFilters.selectedYear)
+          if (cachedFilters.versionTierSort === "tier_asc" || cachedFilters.versionTierSort === "tier_desc") {
+            setVersionTierSort(cachedFilters.versionTierSort)
+          }
         }
       })
     }
@@ -430,9 +453,9 @@ export default function CarrosPage() {
     if (typeof window === "undefined") return
     window.sessionStorage.setItem(
       FILTERS_CACHE_KEY,
-      JSON.stringify({ searchTerm, selectedBrand, selectedYear })
+      JSON.stringify({ searchTerm, selectedBrand, selectedYear, versionTierSort })
     )
-  }, [searchTerm, selectedBrand, selectedYear])
+  }, [searchTerm, selectedBrand, selectedYear, versionTierSort])
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -489,6 +512,22 @@ export default function CarrosPage() {
       return matchesBrand && matchesYear && matchesSearch
     })
   }, [searchTerm, selectedBrand, selectedYear, vehicles])
+
+  const sortedVehicles = useMemo(() => {
+    const tierIndex = new Map(VERSION_TIER_ORDER.map((tier, index) => [tier, index]))
+    const direction = versionTierSort === "tier_asc" ? 1 : -1
+
+    return [...filteredVehicles].sort((a, b) => {
+      const tierA = tierIndex.get(normalizeTierKey(a.versionTier)) ?? Number.MAX_SAFE_INTEGER
+      const tierB = tierIndex.get(normalizeTierKey(b.versionTier)) ?? Number.MAX_SAFE_INTEGER
+      if (tierA !== tierB) return (tierA - tierB) * direction
+
+      if (a.year !== b.year) return b.year - a.year
+      const modelCmp = a.modelName.localeCompare(b.modelName)
+      if (modelCmp !== 0) return modelCmp
+      return a.versionName.localeCompare(b.versionName)
+    })
+  }, [filteredVehicles, versionTierSort])
 
   const toggleCompareSelection = (id: string) => {
     setCompareSelectionError("")
@@ -552,7 +591,7 @@ export default function CarrosPage() {
         <p className="-mt-7 mb-6 text-sm text-amber-700">{compareSelectionError}</p>
       ) : null}
 
-      <div className="mb-8 grid gap-3 md:grid-cols-[1fr_220px_160px]">
+      <div className="mb-8 grid gap-3 md:grid-cols-[1fr_220px_160px_260px]">
         <input
           type="text"
           value={searchTerm}
@@ -586,10 +625,19 @@ export default function CarrosPage() {
             </option>
           ))}
         </select>
+
+        <select
+          value={versionTierSort}
+          onChange={(event) => setVersionTierSort(event.target.value as "tier_asc" | "tier_desc")}
+          className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black/15 focus:border-black/40"
+        >
+          <option value="tier_asc">Versão: Entrada → Esportivo de luxo</option>
+          <option value="tier_desc">Versão: Esportivo de luxo → Entrada</option>
+        </select>
       </div>
 
       <p className="text-sm text-gray-500 mb-6">
-        {filteredVehicles.length} {filteredVehicles.length === 1 ? "resultado" : "resultados"}
+        {sortedVehicles.length} {sortedVehicles.length === 1 ? "resultado" : "resultados"}
       </p>
 
       {loadingVehicles ? (
@@ -605,7 +653,7 @@ export default function CarrosPage() {
       ) : null}
 
       <div className="grid md:grid-cols-3 gap-8">
-        {filteredVehicles.map((version) => (
+        {sortedVehicles.map((version) => (
           <div key={version.id} className="relative">
             <label className="absolute right-3 top-3 z-20 inline-flex items-center gap-2 rounded-md bg-white/90 px-2 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur">
               <input
@@ -705,7 +753,7 @@ export default function CarrosPage() {
         ))}
       </div>
 
-      {!loadingVehicles && !fetchError && !filteredVehicles.length ? (
+      {!loadingVehicles && !fetchError && !sortedVehicles.length ? (
         <div className="mt-10 rounded-xl border border-gray-200 bg-gray-50 p-6 text-center text-gray-600">
           Nenhum modelo encontrado com os filtros atuais.
         </div>

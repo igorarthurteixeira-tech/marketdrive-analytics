@@ -17,6 +17,7 @@ const SECTION_SHORTCUTS: Record<string, { id: string; label: string }[]> = {
   ],
 }
 
+
 type CommentNotifRow = {
   id: string
   content: string
@@ -179,6 +180,7 @@ export default function Header() {
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([])
   const [recentlyReadOnOpen, setRecentlyReadOnOpen] = useState<string[]>([])
   const [liveToast, setLiveToast] = useState<NotificationItem | null>(null)
+  const headerRef = useRef<HTMLElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const notificationsRef = useRef<HTMLDivElement | null>(null)
   const hasFetchedNotifications = useRef(false)
@@ -189,7 +191,11 @@ export default function Header() {
   const { session, signOut } = useAuth()
   const user = session?.user
   const pathname = usePathname()
-  const shortcuts = useMemo(() => SECTION_SHORTCUTS[pathname] ?? [], [pathname])
+  const isCarSlugPage = useMemo(() => /^\/carros\/[^/]+$/.test(pathname), [pathname])
+  const shortcuts = useMemo(() => {
+    if (isCarSlugPage) return []
+    return SECTION_SHORTCUTS[pathname] ?? []
+  }, [isCarSlugPage, pathname])
   const readNotificationSet = useMemo(
     () => new Set(readNotificationIds),
     [readNotificationIds]
@@ -244,7 +250,25 @@ export default function Header() {
 
   useEffect(() => {
     if (!shortcuts.length) {
+      setActiveSection(null)
       return
+    }
+
+    const resolveActiveByScroll = (elements: HTMLElement[]) => {
+      if (!elements.length) return
+      const headerOffset = 92
+      let candidate: HTMLElement | null = null
+      let bestDistance = Number.POSITIVE_INFINITY
+
+      for (const element of elements) {
+        const distance = Math.abs(element.getBoundingClientRect().top - headerOffset)
+        if (distance < bestDistance) {
+          bestDistance = distance
+          candidate = element
+        }
+      }
+
+      if (candidate?.id) setActiveSection(candidate.id)
     }
 
     const observer = new IntersectionObserver(
@@ -270,7 +294,17 @@ export default function Header() {
 
     elements.forEach((element) => observer.observe(element))
 
+    const handleViewportChange = () => {
+      resolveActiveByScroll(elements)
+    }
+    window.addEventListener("scroll", handleViewportChange, { passive: true })
+    window.addEventListener("resize", handleViewportChange)
+    const frame = window.requestAnimationFrame(() => resolveActiveByScroll(elements))
+
     return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener("scroll", handleViewportChange)
+      window.removeEventListener("resize", handleViewportChange)
       elements.forEach((element) => observer.unobserve(element))
       observer.disconnect()
     }
@@ -1291,7 +1325,7 @@ export default function Header() {
     const target = document.getElementById(id)
     if (!target) return
 
-    const headerHeight = 76
+    const headerHeight = headerRef.current?.offsetHeight ?? 96
     const targetTop = target.getBoundingClientRect().top + window.scrollY - headerHeight
     window.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" })
     setActiveSection(id)
@@ -1299,6 +1333,8 @@ export default function Header() {
 
   return (
     <header
+      ref={headerRef}
+      data-site-header="true"
       className={`fixed top-0 left-0 w-full z-50 backdrop-blur-md shadow-sm transition-all duration-300 ease-out ${
         scrolled
           ? "bg-gradient-to-b from-gray-300/96 via-gray-100/94 to-white/92 shadow-md"
@@ -1310,13 +1346,13 @@ export default function Header() {
           scrolled ? "py-1.5" : "py-2"
         }`}
       >
-        <Link href="/" className="flex items-center">
+        <Link href="/" className="flex items-center shrink-0 pr-3">
           <Image
             src="/logo.png"
             alt="Base Automotiva"
             width={300}
             height={88}
-            className={`w-auto transition-all duration-300 ease-out ${
+            className={`w-auto shrink-0 transition-all duration-300 ease-out ${
               scrolled ? "h-9" : "h-12"
             }`}
             priority
@@ -1324,14 +1360,14 @@ export default function Header() {
         </Link>
 
         <nav
-          className={`flex items-center gap-6 lg:gap-8 text-sm font-medium tracking-wide transition-all duration-300 ${
+          className={`min-w-0 flex items-center justify-end gap-4 lg:gap-6 text-sm font-medium tracking-wide transition-all duration-300 ${
             scrolled ? "opacity-90" : "opacity-100"
           }`}
         >
-          {shortcuts.length > 0 && (
+          {shortcuts.length > 0 ? (
             <div className="hidden lg:flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.08em]">
-              {shortcuts.map((shortcut) => (
-                pathname === "/" ? (
+              {shortcuts.map((shortcut) =>
+                pathname === "/" || isCarSlugPage ? (
                   <button
                     key={shortcut.id}
                     type="button"
@@ -1357,9 +1393,9 @@ export default function Header() {
                     {shortcut.label}
                   </Link>
                 )
-              ))}
+              )}
             </div>
-          )}
+          ) : null}
 
           <div className="hidden lg:flex items-center gap-2">
             <div className="relative group">

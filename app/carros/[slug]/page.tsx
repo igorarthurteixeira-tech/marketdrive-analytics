@@ -7,6 +7,7 @@ import CommentDiscussionSection from "@/components/CommentDiscussionSection"
 import VersionRatingSection from "@/components/VersionRatingSection"
 import DefectPointsSection from "@/components/DefectPointsSection"
 import BrandLogo from "@/components/BrandLogo"
+import VehicleSectionTabs from "@/components/VehicleSectionTabs"
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -40,6 +41,19 @@ type VersionDetail = {
   consumo_etanol_estrada_kml?: number | null
   consumo_urbano_kml?: number | null
   consumo_estrada_kml?: number | null
+  capacidade_tanque_l?: number | null
+  autonomia_gasolina_urbano_km?: number | null
+  autonomia_gasolina_estrada_km?: number | null
+  autonomia_etanol_urbano_km?: number | null
+  autonomia_etanol_estrada_km?: number | null
+  airbags?: number | null
+  controle_estabilidade?: boolean | null
+  assistentes_seguranca?: string | null
+  vidro_eletrico_dianteiro?: boolean | null
+  vidro_eletrico_traseiro?: boolean | null
+  ar_condicionado_tipo?: string | null
+  porta_malas_l?: number | null
+  entre_eixos_mm?: number | null
   latin_ncap_pre_2021?: string | null
   latin_ncap_post_2021?: string | null
   peso_kg: number | null
@@ -152,6 +166,19 @@ export default async function Page({
       consumo_etanol_estrada_kml,
       consumo_urbano_kml,
       consumo_estrada_kml,
+      capacidade_tanque_l,
+      autonomia_gasolina_urbano_km,
+      autonomia_gasolina_estrada_km,
+      autonomia_etanol_urbano_km,
+      autonomia_etanol_estrada_km,
+      airbags,
+      controle_estabilidade,
+      assistentes_seguranca,
+      vidro_eletrico_dianteiro,
+      vidro_eletrico_traseiro,
+      ar_condicionado_tipo,
+      porta_malas_l,
+      entre_eixos_mm,
       latin_ncap_pre_2021,
       latin_ncap_post_2021,
       peso_kg,
@@ -258,6 +285,16 @@ export default async function Page({
     return true
   }
 
+  const toPositiveNumber = (value: unknown) => {
+    if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : null
+    if (typeof value === "string") {
+      const normalized = value.replace(",", ".").trim()
+      const parsed = Number(normalized)
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+    }
+    return null
+  }
+
   const formatFuelConsumption = (alcohol: unknown, gasoline: unknown) => {
     const alcoholValid = isValidValue(alcohol)
     const gasolineValid = isValidValue(gasoline)
@@ -283,6 +320,12 @@ export default async function Page({
     return fuels
       .map((fuel) => labelMap[fuel.toLowerCase()] ?? fuel)
       .join(" / ")
+  }
+
+  const formatBoolean = (value: unknown) => {
+    if (value === true) return "Sim"
+    if (value === false) return "Não"
+    return null
   }
 
   const geraisItems: SpecItem[] = [
@@ -342,21 +385,45 @@ export default async function Page({
     {
       label: "Peso por potência (kg/cv)",
       value: (() => {
-        const alc = pickFirst(version, ["peso_potencia_alcool_kgcv"])
-        const gas = pickFirst(version, ["peso_potencia_gasolina_kgcv"])
+        const storedAlc = pickFirst(version, ["peso_potencia_alcool_kgcv"])
+        const storedGas = pickFirst(version, ["peso_potencia_gasolina_kgcv"])
 
-        if (isValidValue(alc) || isValidValue(gas)) {
-          const alcText = isValidValue(alc) ? `${alc} (E)` : ""
-          const gasText = isValidValue(gas) ? `${gas} (G)` : ""
+        if (isValidValue(storedAlc) || isValidValue(storedGas)) {
+          const alcText = isValidValue(storedAlc) ? `${storedAlc} (E)` : ""
+          const gasText = isValidValue(storedGas) ? `${storedGas} (G)` : ""
           return [alcText, gasText].filter(Boolean).join(" / ")
         }
+        const storedSingle = pickFirst(version, ["peso_potencia_kgcv", "weight_to_power_kgcv"])
+        if (isValidValue(storedSingle)) return storedSingle
 
-        return pickFirst(version, ["peso_potencia_kgcv", "weight_to_power_kgcv"])
+        const weight = toPositiveNumber(pickFirst(version, ["peso_kg", "weight_kg"]))
+        if (!weight) return null
+
+        const potenciaAlcool = toPositiveNumber(pickFirst(version, ["potencia_alcool_cv"]))
+        const potenciaGasolina = toPositiveNumber(pickFirst(version, ["potencia_gasolina_cv"]))
+        if (potenciaAlcool || potenciaGasolina) {
+          const alcText = potenciaAlcool
+            ? `${(weight / potenciaAlcool).toFixed(2)} (E)`
+            : ""
+          const gasText = potenciaGasolina
+            ? `${(weight / potenciaGasolina).toFixed(2)} (G)`
+            : ""
+          const joined = [alcText, gasText].filter(Boolean).join(" / ")
+          return joined || null
+        }
+
+        const potenciaSingle = toPositiveNumber(pickFirst(version, ["potencia_cv", "power_cv"]))
+        if (!potenciaSingle) return null
+        return Number((weight / potenciaSingle).toFixed(2))
       })(),
     },
   ].filter((item) => isValidValue(item.value))
 
   const consumoItems: SpecItem[] = [
+    {
+      label: "Capacidade do tanque (L)",
+      value: pickFirst(version, ["capacidade_tanque_l"]),
+    },
     {
       label: "Consumo urbano (km/l)",
       value: formatFuelConsumption(
@@ -371,12 +438,72 @@ export default async function Page({
         pickFirst(version, ["consumo_gasolina_estrada_kml", "consumo_estrada_kml"])
       ),
     },
+    {
+      label: "Autonomia urbana (gasolina)",
+      value: pickFirst(version, ["autonomia_gasolina_urbano_km"]),
+      suffix: "km",
+    },
+    {
+      label: "Autonomia estrada (gasolina)",
+      value: pickFirst(version, ["autonomia_gasolina_estrada_km"]),
+      suffix: "km",
+    },
+    {
+      label: "Autonomia urbana (etanol)",
+      value: pickFirst(version, ["autonomia_etanol_urbano_km"]),
+      suffix: "km",
+    },
+    {
+      label: "Autonomia estrada (etanol)",
+      value: pickFirst(version, ["autonomia_etanol_estrada_km"]),
+      suffix: "km",
+    },
   ].filter((item) => isValidValue(item.value))
 
   const dimensoesItems: SpecItem[] = [
     {
       label: "Peso (kg)",
       value: pickFirst(version, ["peso_kg", "weight_kg"]),
+    },
+  ].filter((item) => isValidValue(item.value))
+
+  const segurancaItems: SpecItem[] = [
+    {
+      label: "Airbags",
+      value: pickFirst(version, ["airbags"]),
+    },
+    {
+      label: "Controle de estabilidade",
+      value: formatBoolean(pickFirst(version, ["controle_estabilidade"])),
+    },
+    {
+      label: "Assistentes de segurança",
+      value: pickFirst(version, ["assistentes_seguranca"]),
+    },
+  ].filter((item) => isValidValue(item.value))
+
+  const confortoItems: SpecItem[] = [
+    {
+      label: "Vidro elétrico dianteiro",
+      value: formatBoolean(pickFirst(version, ["vidro_eletrico_dianteiro"])),
+    },
+    {
+      label: "Vidro elétrico traseiro",
+      value: formatBoolean(pickFirst(version, ["vidro_eletrico_traseiro"])),
+    },
+    {
+      label: "Ar-condicionado",
+      value: pickFirst(version, ["ar_condicionado_tipo"]),
+    },
+    {
+      label: "Porta-malas",
+      value: pickFirst(version, ["porta_malas_l"]),
+      suffix: "L",
+    },
+    {
+      label: "Entre-eixos",
+      value: pickFirst(version, ["entre_eixos_mm"]),
+      suffix: "mm",
     },
   ].filter((item) => isValidValue(item.value))
 
@@ -394,9 +521,33 @@ export default async function Page({
   const specGroups = [
     { title: "Gerais", items: geraisItems },
     { title: "Consumo", items: consumoItems },
+    { title: "Segurança", items: segurancaItems },
+    { title: "Conforto", items: confortoItems },
     { title: "Dimensões", items: dimensoesItems },
     { title: "Notas", items: notasItems },
   ].filter((group) => group.items.length > 0)
+
+  const specGroupIdMap: Record<string, string> = {
+    Gerais: "spec-gerais",
+    Consumo: "spec-consumo",
+    Segurança: "spec-seguranca",
+    Conforto: "spec-conforto",
+    Dimensões: "spec-dimensoes",
+    Notas: "spec-notas",
+  }
+
+  const sectionShortcuts = [
+    ...specGroups
+      .map((group) => {
+        const id = specGroupIdMap[group.title]
+        return id ? { id, label: group.title } : null
+      })
+      .filter((item): item is { id: string; label: string } => Boolean(item)),
+    { id: "comentarios", label: "Comentários" },
+    { id: "defeitos-cronicos", label: "Defeitos crônicos" },
+    { id: "defeitos-pontuais", label: "Problemas pontuais" },
+    { id: "positivos", label: "Pontos positivos" },
+  ]
 
   return (
     <main className="bg-gradient-to-b from-white to-gray-50 min-h-screen pt-32">
@@ -406,12 +557,20 @@ export default async function Page({
             {brandName} {modelName} {version.version_name} {bodyStyleLabel ?? ""} {version.year}
           </h1>
 
-          <Link
-            href={`/carros/${slug}/editar`}
-            className="bg-black text-white px-4 py-2 rounded-lg shadow-sm hover:bg-gray-900 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
-          >
-            Editar
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/carros"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              Voltar
+            </Link>
+            <Link
+              href={`/carros/${slug}/editar`}
+              className="bg-black text-white px-4 py-2 rounded-lg shadow-sm hover:bg-gray-900 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 cursor-pointer"
+            >
+              Editar
+            </Link>
+          </div>
         </div>
         <p className="text-gray-600 mb-4">
           {version.version_tier}
@@ -441,6 +600,8 @@ export default async function Page({
         </div>
       </section>
 
+      <VehicleSectionTabs shortcuts={sectionShortcuts} />
+
       {specGroups.length ? (
         <section className="max-w-7xl mx-auto px-8 pb-16">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -450,7 +611,7 @@ export default async function Page({
             </p>
             <div className="space-y-6">
               {specGroups.map((group) => (
-                <div key={group.title}>
+                <div key={group.title} id={specGroupIdMap[group.title]} className="scroll-mt-24">
                   <h3 className="text-base font-semibold text-gray-900 mb-3">{group.title}</h3>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {group.items.map((item) => (

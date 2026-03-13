@@ -78,6 +78,19 @@ type EditableVersionRow = {
   consumo_etanol_estrada_kml?: number | null
   consumo_urbano_kml?: number | null
   consumo_estrada_kml?: number | null
+  capacidade_tanque_l?: number | null
+  autonomia_gasolina_urbano_km?: number | null
+  autonomia_gasolina_estrada_km?: number | null
+  autonomia_etanol_urbano_km?: number | null
+  autonomia_etanol_estrada_km?: number | null
+  airbags?: number | null
+  controle_estabilidade?: boolean | null
+  assistentes_seguranca?: string | null
+  vidro_eletrico_dianteiro?: boolean | null
+  vidro_eletrico_traseiro?: boolean | null
+  ar_condicionado_tipo?: string | null
+  porta_malas_l?: number | null
+  entre_eixos_mm?: number | null
   latin_ncap_pre_2021?: string | null
   latin_ncap_post_2021?: string | null
   peso_kg: number | null
@@ -216,6 +229,19 @@ export default function Page() {
   const [consumptionGasHighway, setConsumptionGasHighway] = useState("")
   const [consumptionAlcoholCity, setConsumptionAlcoholCity] = useState("")
   const [consumptionAlcoholHighway, setConsumptionAlcoholHighway] = useState("")
+  const [tankCapacityL, setTankCapacityL] = useState("")
+  const [rangeGasCityKm, setRangeGasCityKm] = useState("")
+  const [rangeGasHighwayKm, setRangeGasHighwayKm] = useState("")
+  const [rangeAlcoholCityKm, setRangeAlcoholCityKm] = useState("")
+  const [rangeAlcoholHighwayKm, setRangeAlcoholHighwayKm] = useState("")
+  const [airbagsCount, setAirbagsCount] = useState("")
+  const [stabilityControl, setStabilityControl] = useState<"" | "sim" | "nao">("")
+  const [safetyAssistants, setSafetyAssistants] = useState("")
+  const [frontPowerWindows, setFrontPowerWindows] = useState<"" | "sim" | "nao">("")
+  const [rearPowerWindows, setRearPowerWindows] = useState<"" | "sim" | "nao">("")
+  const [acType, setAcType] = useState("")
+  const [trunkCapacityL, setTrunkCapacityL] = useState("")
+  const [wheelbaseMm, setWheelbaseMm] = useState("")
   const [latinNcapPre2021, setLatinNcapPre2021] = useState("")
   const [latinNcapPost2021, setLatinNcapPost2021] = useState("")
   const [weightKg, setWeightKg] = useState("")
@@ -342,6 +368,19 @@ export default function Page() {
           consumo_etanol_estrada_kml,
           consumo_urbano_kml,
           consumo_estrada_kml,
+          capacidade_tanque_l,
+          autonomia_gasolina_urbano_km,
+          autonomia_gasolina_estrada_km,
+          autonomia_etanol_urbano_km,
+          autonomia_etanol_estrada_km,
+          airbags,
+          controle_estabilidade,
+          assistentes_seguranca,
+          vidro_eletrico_dianteiro,
+          vidro_eletrico_traseiro,
+          ar_condicionado_tipo,
+          porta_malas_l,
+          entre_eixos_mm,
           latin_ncap_pre_2021,
           latin_ncap_post_2021,
           peso_kg,
@@ -351,6 +390,7 @@ export default function Page() {
           velocidade_maxima_kmh,
           version_name,
           version_tier,
+          body_style,
           vehicles (
             id,
             name,
@@ -474,6 +514,45 @@ export default function Page() {
       setConsumptionAlcoholHighway(
         typedVersion.consumo_etanol_estrada_kml != null ? String(typedVersion.consumo_etanol_estrada_kml) : ""
       )
+      setTankCapacityL(typedVersion.capacidade_tanque_l != null ? String(typedVersion.capacidade_tanque_l) : "")
+      setRangeGasCityKm(
+        typedVersion.autonomia_gasolina_urbano_km != null ? String(typedVersion.autonomia_gasolina_urbano_km) : ""
+      )
+      setRangeGasHighwayKm(
+        typedVersion.autonomia_gasolina_estrada_km != null ? String(typedVersion.autonomia_gasolina_estrada_km) : ""
+      )
+      setRangeAlcoholCityKm(
+        typedVersion.autonomia_etanol_urbano_km != null ? String(typedVersion.autonomia_etanol_urbano_km) : ""
+      )
+      setRangeAlcoholHighwayKm(
+        typedVersion.autonomia_etanol_estrada_km != null ? String(typedVersion.autonomia_etanol_estrada_km) : ""
+      )
+      setAirbagsCount(typedVersion.airbags != null ? String(typedVersion.airbags) : "")
+      setStabilityControl(
+        typedVersion.controle_estabilidade === true
+          ? "sim"
+          : typedVersion.controle_estabilidade === false
+            ? "nao"
+            : ""
+      )
+      setSafetyAssistants(typedVersion.assistentes_seguranca ?? "")
+      setFrontPowerWindows(
+        typedVersion.vidro_eletrico_dianteiro === true
+          ? "sim"
+          : typedVersion.vidro_eletrico_dianteiro === false
+            ? "nao"
+            : ""
+      )
+      setRearPowerWindows(
+        typedVersion.vidro_eletrico_traseiro === true
+          ? "sim"
+          : typedVersion.vidro_eletrico_traseiro === false
+            ? "nao"
+            : ""
+      )
+      setAcType(typedVersion.ar_condicionado_tipo ?? "")
+      setTrunkCapacityL(typedVersion.porta_malas_l != null ? String(typedVersion.porta_malas_l) : "")
+      setWheelbaseMm(typedVersion.entre_eixos_mm != null ? String(typedVersion.entre_eixos_mm) : "")
       setLatinNcapPre2021(typedVersion.latin_ncap_pre_2021 ?? "")
       setLatinNcapPost2021(typedVersion.latin_ncap_post_2021 ?? "")
       setWeightKg(typedVersion.peso_kg != null ? String(typedVersion.peso_kg) : "")
@@ -634,6 +713,12 @@ export default function Page() {
     return Number.isFinite(parsed) ? parsed : null
   }
 
+  const parseOptionalBoolean = (raw: "" | "sim" | "nao") => {
+    if (raw === "sim") return true
+    if (raw === "nao") return false
+    return null
+  }
+
   const updateEditableItem = (
     setter: Dispatch<SetStateAction<EditableItem[]>>,
     index: number,
@@ -703,6 +788,19 @@ export default function Page() {
       const consumoGasolinaEstrada = isFlexFuel ? parseOptionalNumber(consumptionGasHighway) : null
       const consumoEtanolUrbano = isFlexFuel ? parseOptionalNumber(consumptionAlcoholCity) : null
       const consumoEtanolEstrada = isFlexFuel ? parseOptionalNumber(consumptionAlcoholHighway) : null
+      const capacidadeTanqueL = parseOptionalNumber(tankCapacityL)
+      const autonomiaGasolinaUrbanoKm = parseOptionalNumber(rangeGasCityKm)
+      const autonomiaGasolinaEstradaKm = parseOptionalNumber(rangeGasHighwayKm)
+      const autonomiaEtanolUrbanoKm = parseOptionalNumber(rangeAlcoholCityKm)
+      const autonomiaEtanolEstradaKm = parseOptionalNumber(rangeAlcoholHighwayKm)
+      const airbags = parseOptionalNumber(airbagsCount)
+      const controleEstabilidade = parseOptionalBoolean(stabilityControl)
+      const assistentesSeguranca = safetyAssistants.trim() || null
+      const vidroEletricoDianteiro = parseOptionalBoolean(frontPowerWindows)
+      const vidroEletricoTraseiro = parseOptionalBoolean(rearPowerWindows)
+      const arCondicionadoTipo = acType.trim() || null
+      const portaMalasL = parseOptionalNumber(trunkCapacityL)
+      const entreEixosMm = parseOptionalNumber(wheelbaseMm)
       const latinNcapAte2021 = latinNcapPre2021.trim() || null
       const latinNcapPos2021 = latinNcapPost2021.trim() || null
       const pesoKg = parseOptionalNumber(weightKg)
@@ -764,8 +862,8 @@ export default function Page() {
         transmission,
         bodyStyle
       )
-      // Preserve current URL slug to avoid breaking existing links.
-      const versionSlug = slug || generatedVersionSlug
+      // Regenerate slug based on current version identity fields (brand/model/version/body/transmission/year).
+      const versionSlug = generatedVersionSlug
 
       if (!isVersionAuthor) {
         if (image || removeExistingImage) {
@@ -803,6 +901,19 @@ export default function Page() {
             consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
             consumo_etanol_urbano_kml: consumoEtanolUrbano,
             consumo_etanol_estrada_kml: consumoEtanolEstrada,
+            capacidade_tanque_l: capacidadeTanqueL,
+            autonomia_gasolina_urbano_km: autonomiaGasolinaUrbanoKm,
+            autonomia_gasolina_estrada_km: autonomiaGasolinaEstradaKm,
+            autonomia_etanol_urbano_km: autonomiaEtanolUrbanoKm,
+            autonomia_etanol_estrada_km: autonomiaEtanolEstradaKm,
+            airbags: airbags,
+            controle_estabilidade: controleEstabilidade,
+            assistentes_seguranca: assistentesSeguranca,
+            vidro_eletrico_dianteiro: vidroEletricoDianteiro,
+            vidro_eletrico_traseiro: vidroEletricoTraseiro,
+            ar_condicionado_tipo: arCondicionadoTipo,
+            porta_malas_l: portaMalasL,
+            entre_eixos_mm: entreEixosMm,
             latin_ncap_pre_2021: latinNcapAte2021,
             latin_ncap_post_2021: latinNcapPos2021,
             peso_kg: pesoKg,
@@ -888,6 +999,19 @@ export default function Page() {
         consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
         consumo_etanol_urbano_kml: consumoEtanolUrbano,
         consumo_etanol_estrada_kml: consumoEtanolEstrada,
+        capacidade_tanque_l: capacidadeTanqueL,
+        autonomia_gasolina_urbano_km: autonomiaGasolinaUrbanoKm,
+        autonomia_gasolina_estrada_km: autonomiaGasolinaEstradaKm,
+        autonomia_etanol_urbano_km: autonomiaEtanolUrbanoKm,
+        autonomia_etanol_estrada_km: autonomiaEtanolEstradaKm,
+        airbags: airbags,
+        controle_estabilidade: controleEstabilidade,
+        assistentes_seguranca: assistentesSeguranca,
+        vidro_eletrico_dianteiro: vidroEletricoDianteiro,
+        vidro_eletrico_traseiro: vidroEletricoTraseiro,
+        ar_condicionado_tipo: arCondicionadoTipo,
+        porta_malas_l: portaMalasL,
+        entre_eixos_mm: entreEixosMm,
         latin_ncap_pre_2021: latinNcapAte2021,
         latin_ncap_post_2021: latinNcapPos2021,
         peso_kg: pesoKg,
@@ -1374,6 +1498,117 @@ export default function Page() {
             />
           </div>
         )}
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">
+          Autonomia e abastecimento
+        </h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Capacidade do tanque (L) - ex: 47"
+            value={tankCapacityL}
+            onChange={(e) => setTankCapacityL(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia gasolina urbano (km)"
+            value={rangeGasCityKm}
+            onChange={(e) => setRangeGasCityKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia gasolina estrada (km)"
+            value={rangeGasHighwayKm}
+            onChange={(e) => setRangeGasHighwayKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia etanol urbano (km)"
+            value={rangeAlcoholCityKm}
+            onChange={(e) => setRangeAlcoholCityKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia etanol estrada (km)"
+            value={rangeAlcoholHighwayKm}
+            onChange={(e) => setRangeAlcoholHighwayKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">Segurança</h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Quantidade de airbags - ex: 6"
+            value={airbagsCount}
+            onChange={(e) => setAirbagsCount(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <select
+            value={stabilityControl}
+            onChange={(e) => setStabilityControl(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Controle de estabilidade: não informado</option>
+            <option value="sim">Controle de estabilidade: sim</option>
+            <option value="nao">Controle de estabilidade: não</option>
+          </select>
+        </div>
+        <textarea
+          placeholder="Assistentes de segurança (frenagem autônoma, ACC, alerta de faixa...)"
+          value={safetyAssistants}
+          onChange={(e) => setSafetyAssistants(e.target.value)}
+          rows={3}
+          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+        />
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">Conforto e uso diário</h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <select
+            value={frontPowerWindows}
+            onChange={(e) => setFrontPowerWindows(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Vidro elétrico dianteiro: não informado</option>
+            <option value="sim">Vidro elétrico dianteiro: sim</option>
+            <option value="nao">Vidro elétrico dianteiro: não</option>
+          </select>
+          <select
+            value={rearPowerWindows}
+            onChange={(e) => setRearPowerWindows(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Vidro elétrico traseiro: não informado</option>
+            <option value="sim">Vidro elétrico traseiro: sim</option>
+            <option value="nao">Vidro elétrico traseiro: não</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Ar-condicionado (manual, digital, dual zone...)"
+            value={acType}
+            onChange={(e) => setAcType(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Porta-malas (L) - ex: 521"
+            value={trunkCapacityL}
+            onChange={(e) => setTrunkCapacityL(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Entre-eixos (mm) - ex: 2600"
+            value={wheelbaseMm}
+            onChange={(e) => setWheelbaseMm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
 
         <input
           type="text"

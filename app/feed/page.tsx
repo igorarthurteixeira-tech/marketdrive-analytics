@@ -111,6 +111,10 @@ export default function FeedPage() {
 
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
+  const [feedFilter, setFeedFilter] = useState<"all" | "following">("all")
+  const [sortMode, setSortMode] = useState<"recent" | "relevant">("recent")
+  const [followsEnabled, setFollowsEnabled] = useState(true)
+  const [followingIds, setFollowingIds] = useState<string[]>([])
   const [postsEnabled, setPostsEnabled] = useState(true)
   const [postVotesEnabled, setPostVotesEnabled] = useState(true)
   const [postCommentsEnabled, setPostCommentsEnabled] = useState(true)
@@ -140,6 +144,36 @@ export default function FeedPage() {
       setErrorMessage("")
 
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      if (session?.user?.id) {
+        const followsRes = await supabase
+          .from("user_follows")
+          .select("following_id")
+          .eq("follower_id", session.user.id)
+
+        if (followsRes.error && /relation|table|schema cache|does not exist/i.test(followsRes.error.message ?? "")) {
+          setFollowsEnabled(false)
+          setFollowingIds([])
+        } else if (followsRes.error) {
+          setFollowsEnabled(true)
+          setFollowingIds([])
+          setErrorMessage(`Falha ao carregar seguidores: ${followsRes.error.message}`)
+        } else {
+          setFollowsEnabled(true)
+          const ids = Array.from(
+            new Set(
+              ((followsRes.data as { following_id: string }[] | null) ?? [])
+                .map((row) => row.following_id)
+                .filter(Boolean)
+                .concat(session.user.id)
+            )
+          )
+          setFollowingIds(ids)
+        }
+      } else {
+        setFollowsEnabled(true)
+        setFollowingIds([])
+      }
 
       const [versionsRes, commentsRes, commentVotesRes, positiveVotesRes, defectVotesRes, postsRes] =
         await Promise.all([
@@ -366,6 +400,54 @@ export default function FeedPage() {
 
     void fetchFeed()
   }, [session?.user?.id])
+
+  const effectiveFeedFilter: "all" | "following" =
+    feedFilter === "following" && followsEnabled ? "following" : "all"
+
+  const filteredPosts = useMemo(() => {
+    const byRecency = (items: FeedPost[]) => {
+      return [...items].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+    }
+
+    const byRelevance = (items: FeedPost[]) => {
+      const now = Date.now()
+      return [...items].sort((a, b) => {
+        const aVotes = postVotesByPost[a.id] ?? { confirmed: 0, denied: 0, userVote: null }
+        const bVotes = postVotesByPost[b.id] ?? { confirmed: 0, denied: 0, userVote: null }
+        const aComments = (postCommentsByPost[a.id] ?? []).length
+        const bComments = (postCommentsByPost[b.id] ?? []).length
+
+        const aHours = Math.max(1, (now - new Date(a.created_at).getTime()) / (1000 * 60 * 60))
+        const bHours = Math.max(1, (now - new Date(b.created_at).getTime()) / (1000 * 60 * 60))
+
+        const aScore =
+          (aVotes.confirmed * 2 + aComments * 1.5 + aVotes.denied * 0.5) / Math.sqrt(aHours)
+        const bScore =
+          (bVotes.confirmed * 2 + bComments * 1.5 + bVotes.denied * 0.5) / Math.sqrt(bHours)
+
+        if (bScore !== aScore) return bScore - aScore
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      })
+    }
+
+    const sortPosts = (items: FeedPost[]) => (sortMode === "recent" ? byRecency(items) : byRelevance(items))
+
+    if (effectiveFeedFilter === "all") return sortPosts(posts)
+    if (!session?.user?.id) return []
+    if (!followingIds.length) return []
+    const visibleAuthorIds = new Set(followingIds)
+    return sortPosts(posts.filter((post) => visibleAuthorIds.has(post.author_user_id)))
+  }, [
+    effectiveFeedFilter,
+    followingIds,
+    postCommentsByPost,
+    postVotesByPost,
+    posts,
+    session?.user?.id,
+    sortMode,
+  ])
 
   const voteOnPost = async (postId: string, isConfirmed: boolean) => {
     if (!session?.user?.id) {
@@ -630,7 +712,7 @@ export default function FeedPage() {
   }
 
   const postCards = useMemo(() => {
-    return posts.map((post) => {
+    return filteredPosts.map((post) => {
       const author = profilesById[post.author_user_id]
       const version =
         post.related_vehicle_version_id ? versionsById[post.related_vehicle_version_id] ?? null : null
@@ -642,7 +724,7 @@ export default function FeedPage() {
         relatedVersion: version,
       }
     })
-  }, [posts, profilesById, versionsById])
+  }, [filteredPosts, profilesById, versionsById])
 
   return (
     <main className="min-h-screen max-w-6xl mx-auto px-6 md:px-8 pt-28 pb-16 space-y-8">
@@ -653,6 +735,33 @@ export default function FeedPage() {
             <p className="mt-2 text-sm text-gray-600">
               Novos modelos, discussoes em alta e top da semana.
             </p>
+            {session?.user?.id ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter("all")}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    effectiveFeedFilter === "all"
+                      ? "bg-black text-white"
+                      : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter("following")}
+                  disabled={!followsEnabled}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition disabled:opacity-60 ${
+                    effectiveFeedFilter === "following"
+                      ? "bg-black text-white"
+                      : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  Seguindo
+                </button>
+              </div>
+            ) : null}
           </div>
           {session?.user?.id ? (
             <Link
@@ -674,10 +783,36 @@ export default function FeedPage() {
 
       <section className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-gray-900">
-            <Newspaper size={18} />
-            Publicacoes da comunidade
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-gray-900">
+              <Newspaper size={18} />
+              Publicacoes da comunidade
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setSortMode("recent")}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  sortMode === "recent"
+                    ? "bg-black text-white"
+                    : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Recentes
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortMode("relevant")}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                  sortMode === "relevant"
+                    ? "bg-black text-white"
+                    : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                Relevantes
+              </button>
+            </div>
+          </div>
           {!postsEnabled ? (
             <p className="mt-3 text-sm text-gray-600">
               Estrutura de postagens ainda nao disponivel no banco.
@@ -685,7 +820,11 @@ export default function FeedPage() {
           ) : null}
 
           {postsEnabled && !postCards.length ? (
-            <p className="mt-3 text-sm text-gray-600">Nenhuma publicacao ainda.</p>
+            <p className="mt-3 text-sm text-gray-600">
+              {effectiveFeedFilter === "following"
+                ? "Nenhuma publicacao de perfis que voce segue."
+                : "Nenhuma publicacao ainda."}
+            </p>
           ) : null}
 
           {postsEnabled && postCards.length ? (

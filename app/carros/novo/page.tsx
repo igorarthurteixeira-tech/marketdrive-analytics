@@ -79,6 +79,19 @@ type DraftPayload = {
   consumptionGasHighway: string
   consumptionAlcoholCity: string
   consumptionAlcoholHighway: string
+  tankCapacityL: string
+  rangeGasCityKm: string
+  rangeGasHighwayKm: string
+  rangeAlcoholCityKm: string
+  rangeAlcoholHighwayKm: string
+  airbagsCount: string
+  stabilityControl: "" | "sim" | "nao"
+  safetyAssistants: string
+  frontPowerWindows: "" | "sim" | "nao"
+  rearPowerWindows: "" | "sim" | "nao"
+  acType: string
+  trunkCapacityL: string
+  wheelbaseMm: string
   weightKg: string
   acceleration0100: string
   maxSpeedKmh: string
@@ -205,6 +218,19 @@ export default function NovoCarro() {
   const [consumptionGasHighway, setConsumptionGasHighway] = useState("")
   const [consumptionAlcoholCity, setConsumptionAlcoholCity] = useState("")
   const [consumptionAlcoholHighway, setConsumptionAlcoholHighway] = useState("")
+  const [tankCapacityL, setTankCapacityL] = useState("")
+  const [rangeGasCityKm, setRangeGasCityKm] = useState("")
+  const [rangeGasHighwayKm, setRangeGasHighwayKm] = useState("")
+  const [rangeAlcoholCityKm, setRangeAlcoholCityKm] = useState("")
+  const [rangeAlcoholHighwayKm, setRangeAlcoholHighwayKm] = useState("")
+  const [airbagsCount, setAirbagsCount] = useState("")
+  const [stabilityControl, setStabilityControl] = useState<"" | "sim" | "nao">("")
+  const [safetyAssistants, setSafetyAssistants] = useState("")
+  const [frontPowerWindows, setFrontPowerWindows] = useState<"" | "sim" | "nao">("")
+  const [rearPowerWindows, setRearPowerWindows] = useState<"" | "sim" | "nao">("")
+  const [acType, setAcType] = useState("")
+  const [trunkCapacityL, setTrunkCapacityL] = useState("")
+  const [wheelbaseMm, setWheelbaseMm] = useState("")
   const [weightKg, setWeightKg] = useState("")
   const [acceleration0100, setAcceleration0100] = useState("")
   const [maxSpeedKmh, setMaxSpeedKmh] = useState("")
@@ -400,6 +426,19 @@ export default function NovoCarro() {
       setConsumptionGasHighway(payload.consumptionGasHighway ?? "")
       setConsumptionAlcoholCity(payload.consumptionAlcoholCity ?? "")
       setConsumptionAlcoholHighway(payload.consumptionAlcoholHighway ?? "")
+      setTankCapacityL(payload.tankCapacityL ?? "")
+      setRangeGasCityKm(payload.rangeGasCityKm ?? "")
+      setRangeGasHighwayKm(payload.rangeGasHighwayKm ?? "")
+      setRangeAlcoholCityKm(payload.rangeAlcoholCityKm ?? "")
+      setRangeAlcoholHighwayKm(payload.rangeAlcoholHighwayKm ?? "")
+      setAirbagsCount(payload.airbagsCount ?? "")
+      setStabilityControl(payload.stabilityControl ?? "")
+      setSafetyAssistants(payload.safetyAssistants ?? "")
+      setFrontPowerWindows(payload.frontPowerWindows ?? "")
+      setRearPowerWindows(payload.rearPowerWindows ?? "")
+      setAcType(payload.acType ?? "")
+      setTrunkCapacityL(payload.trunkCapacityL ?? "")
+      setWheelbaseMm(payload.wheelbaseMm ?? "")
       setWeightKg(payload.weightKg ?? "")
       setAcceleration0100(payload.acceleration0100 ?? "")
       setMaxSpeedKmh(payload.maxSpeedKmh ?? "")
@@ -443,6 +482,19 @@ export default function NovoCarro() {
     consumptionGasHighway,
     consumptionAlcoholCity,
     consumptionAlcoholHighway,
+    tankCapacityL,
+    rangeGasCityKm,
+    rangeGasHighwayKm,
+    rangeAlcoholCityKm,
+    rangeAlcoholHighwayKm,
+    airbagsCount,
+    stabilityControl,
+    safetyAssistants,
+    frontPowerWindows,
+    rearPowerWindows,
+    acType,
+    trunkCapacityL,
+    wheelbaseMm,
     weightKg,
     acceleration0100,
     maxSpeedKmh,
@@ -567,6 +619,12 @@ export default function NovoCarro() {
     return Number.isFinite(parsed) ? parsed : null
   }
 
+  const parseOptionalBoolean = (raw: "" | "sim" | "nao") => {
+    if (raw === "sim") return true
+    if (raw === "nao") return false
+    return null
+  }
+
   const updateListItem = (
     setter: Dispatch<SetStateAction<string[]>>,
     index: number,
@@ -644,6 +702,19 @@ export default function NovoCarro() {
       const consumoGasolinaEstrada = isFlexFuel ? parseOptionalNumber(consumptionGasHighway) : null
       const consumoEtanolUrbano = isFlexFuel ? parseOptionalNumber(consumptionAlcoholCity) : null
       const consumoEtanolEstrada = isFlexFuel ? parseOptionalNumber(consumptionAlcoholHighway) : null
+      const capacidadeTanqueL = parseOptionalNumber(tankCapacityL)
+      const autonomiaGasolinaUrbanoKm = parseOptionalNumber(rangeGasCityKm)
+      const autonomiaGasolinaEstradaKm = parseOptionalNumber(rangeGasHighwayKm)
+      const autonomiaEtanolUrbanoKm = parseOptionalNumber(rangeAlcoholCityKm)
+      const autonomiaEtanolEstradaKm = parseOptionalNumber(rangeAlcoholHighwayKm)
+      const airbags = parseOptionalNumber(airbagsCount)
+      const controleEstabilidade = parseOptionalBoolean(stabilityControl)
+      const assistentesSeguranca = safetyAssistants.trim() || null
+      const vidroEletricoDianteiro = parseOptionalBoolean(frontPowerWindows)
+      const vidroEletricoTraseiro = parseOptionalBoolean(rearPowerWindows)
+      const arCondicionadoTipo = acType.trim() || null
+      const portaMalasL = parseOptionalNumber(trunkCapacityL)
+      const entreEixosMm = parseOptionalNumber(wheelbaseMm)
       const pesoKg = parseOptionalNumber(weightKg)
       const pesoPotenciaAlcool =
         potenciaAlcool && pesoKg
@@ -790,6 +861,19 @@ export default function NovoCarro() {
             consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
             consumo_etanol_urbano_kml: consumoEtanolUrbano,
             consumo_etanol_estrada_kml: consumoEtanolEstrada,
+            capacidade_tanque_l: capacidadeTanqueL,
+            autonomia_gasolina_urbano_km: autonomiaGasolinaUrbanoKm,
+            autonomia_gasolina_estrada_km: autonomiaGasolinaEstradaKm,
+            autonomia_etanol_urbano_km: autonomiaEtanolUrbanoKm,
+            autonomia_etanol_estrada_km: autonomiaEtanolEstradaKm,
+            airbags: airbags,
+            controle_estabilidade: controleEstabilidade,
+            assistentes_seguranca: assistentesSeguranca,
+            vidro_eletrico_dianteiro: vidroEletricoDianteiro,
+            vidro_eletrico_traseiro: vidroEletricoTraseiro,
+            ar_condicionado_tipo: arCondicionadoTipo,
+            porta_malas_l: portaMalasL,
+            entre_eixos_mm: entreEixosMm,
             peso_kg: pesoKg,
             peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
             peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
@@ -936,6 +1020,19 @@ export default function NovoCarro() {
             consumo_gasolina_estrada_kml: consumoGasolinaEstrada,
             consumo_etanol_urbano_kml: consumoEtanolUrbano,
             consumo_etanol_estrada_kml: consumoEtanolEstrada,
+            capacidade_tanque_l: capacidadeTanqueL,
+            autonomia_gasolina_urbano_km: autonomiaGasolinaUrbanoKm,
+            autonomia_gasolina_estrada_km: autonomiaGasolinaEstradaKm,
+            autonomia_etanol_urbano_km: autonomiaEtanolUrbanoKm,
+            autonomia_etanol_estrada_km: autonomiaEtanolEstradaKm,
+            airbags: airbags,
+            controle_estabilidade: controleEstabilidade,
+            assistentes_seguranca: assistentesSeguranca,
+            vidro_eletrico_dianteiro: vidroEletricoDianteiro,
+            vidro_eletrico_traseiro: vidroEletricoTraseiro,
+            ar_condicionado_tipo: arCondicionadoTipo,
+            porta_malas_l: portaMalasL,
+            entre_eixos_mm: entreEixosMm,
             peso_kg: pesoKg,
             peso_potencia_alcool_kgcv: pesoPotenciaAlcool,
             peso_potencia_gasolina_kgcv: pesoPotenciaGasolina,
@@ -1543,6 +1640,117 @@ export default function NovoCarro() {
             />
           </div>
         )}
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">
+          Autonomia e abastecimento
+        </h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Capacidade do tanque (L) - ex: 47"
+            value={tankCapacityL}
+            onChange={(e) => setTankCapacityL(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia gasolina urbano (km)"
+            value={rangeGasCityKm}
+            onChange={(e) => setRangeGasCityKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia gasolina estrada (km)"
+            value={rangeGasHighwayKm}
+            onChange={(e) => setRangeGasHighwayKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia etanol urbano (km)"
+            value={rangeAlcoholCityKm}
+            onChange={(e) => setRangeAlcoholCityKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Autonomia etanol estrada (km)"
+            value={rangeAlcoholHighwayKm}
+            onChange={(e) => setRangeAlcoholHighwayKm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">Segurança</h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <input
+            type="text"
+            placeholder="Quantidade de airbags - ex: 6"
+            value={airbagsCount}
+            onChange={(e) => setAirbagsCount(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <select
+            value={stabilityControl}
+            onChange={(e) => setStabilityControl(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Controle de estabilidade: não informado</option>
+            <option value="sim">Controle de estabilidade: sim</option>
+            <option value="nao">Controle de estabilidade: não</option>
+          </select>
+        </div>
+        <textarea
+          placeholder="Assistentes de segurança (frenagem autônoma, ACC, alerta de faixa...)"
+          value={safetyAssistants}
+          onChange={(e) => setSafetyAssistants(e.target.value)}
+          rows={3}
+          className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+        />
+
+        <h4 className="text-base font-semibold text-gray-900 mt-1">Conforto e uso diário</h4>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <select
+            value={frontPowerWindows}
+            onChange={(e) => setFrontPowerWindows(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Vidro elétrico dianteiro: não informado</option>
+            <option value="sim">Vidro elétrico dianteiro: sim</option>
+            <option value="nao">Vidro elétrico dianteiro: não</option>
+          </select>
+          <select
+            value={rearPowerWindows}
+            onChange={(e) => setRearPowerWindows(e.target.value as "" | "sim" | "nao")}
+            className="w-full border border-gray-300 p-3 rounded-lg bg-white transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          >
+            <option value="">Vidro elétrico traseiro: não informado</option>
+            <option value="sim">Vidro elétrico traseiro: sim</option>
+            <option value="nao">Vidro elétrico traseiro: não</option>
+          </select>
+          <input
+            type="text"
+            placeholder="Ar-condicionado (manual, digital, dual zone...)"
+            value={acType}
+            onChange={(e) => setAcType(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Porta-malas (L) - ex: 521"
+            value={trunkCapacityL}
+            onChange={(e) => setTrunkCapacityL(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+          <input
+            type="text"
+            placeholder="Entre-eixos (mm) - ex: 2600"
+            value={wheelbaseMm}
+            onChange={(e) => setWheelbaseMm(e.target.value)}
+            className="w-full border border-gray-300 p-3 rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black/50"
+          />
+        </div>
 
         <input
           type="text"

@@ -176,6 +176,11 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
   const [userPosts, setUserPosts] = useState<UserPostRow[]>([])
   const [loadingContributions, setLoadingContributions] = useState(true)
   const [postsTableAvailable, setPostsTableAvailable] = useState(true)
+  const [followTableAvailable, setFollowTableAvailable] = useState(true)
+  const [followersCount, setFollowersCount] = useState(0)
+  const [followingCount, setFollowingCount] = useState(0)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followLoading, setFollowLoading] = useState(false)
 
   const profileId = forcedProfileId ?? session?.user?.id ?? null
   const isOwnProfile = Boolean(session?.user?.id && profileId === session.user.id)
@@ -772,6 +777,89 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
     void fetchContributions()
   }, [profileId])
 
+  useEffect(() => {
+    const fetchFollowState = async () => {
+      if (!profileId) {
+        setFollowersCount(0)
+        setFollowingCount(0)
+        setIsFollowing(false)
+        return
+      }
+
+      const currentUserId = session?.user?.id ?? null
+
+      const [followersRes, followingRes, myFollowRes] = await Promise.all([
+        supabase
+          .from("user_follows")
+          .select("follower_id", { head: true, count: "exact" })
+          .eq("following_id", profileId),
+        supabase
+          .from("user_follows")
+          .select("following_id", { head: true, count: "exact" })
+          .eq("follower_id", profileId),
+        currentUserId && !isOwnProfile
+          ? supabase
+              .from("user_follows")
+              .select("following_id")
+              .eq("follower_id", currentUserId)
+              .eq("following_id", profileId)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ])
+
+      const hasMissingTableError = [followersRes.error, followingRes.error, myFollowRes.error].some((error) =>
+        /relation|table|schema cache|does not exist/i.test(error?.message ?? "")
+      )
+
+      if (hasMissingTableError) {
+        setFollowTableAvailable(false)
+        setFollowersCount(0)
+        setFollowingCount(0)
+        setIsFollowing(false)
+        return
+      }
+
+      setFollowTableAvailable(true)
+      setFollowersCount(followersRes.count ?? 0)
+      setFollowingCount(followingRes.count ?? 0)
+      setIsFollowing(Boolean(myFollowRes.data))
+    }
+
+    void fetchFollowState()
+  }, [isOwnProfile, profileId, session?.user?.id])
+
+  const handleToggleFollow = async () => {
+    if (!session?.user?.id) {
+      setErrorMessage("Voce precisa entrar para seguir perfis.")
+      return
+    }
+    if (!profileId || isOwnProfile || !followTableAvailable || followLoading) return
+
+    setFollowLoading(true)
+    setErrorMessage("")
+
+    const result = isFollowing
+      ? await supabase
+          .from("user_follows")
+          .delete()
+          .eq("follower_id", session.user.id)
+          .eq("following_id", profileId)
+      : await supabase.from("user_follows").insert({
+          follower_id: session.user.id,
+          following_id: profileId,
+        })
+
+    if (result.error) {
+      setErrorMessage(`Nao foi possivel atualizar seguidores: ${result.error.message}`)
+      setFollowLoading(false)
+      return
+    }
+
+    setIsFollowing((prev) => !prev)
+    setFollowersCount((prev) => Math.max(0, prev + (isFollowing ? -1 : 1)))
+    setFollowLoading(false)
+  }
+
   const handleSaveProfile = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!isOwnProfile || !session?.user?.id) return
@@ -993,6 +1081,12 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
                 Nivel: {profile.profile_level}
               </span>
             ) : null}
+            <span className="rounded-full border border-gray-300 px-3 py-1 text-gray-700">
+              Seguidores: {followersCount}
+            </span>
+            <span className="rounded-full border border-gray-300 px-3 py-1 text-gray-700">
+              Seguindo: {followingCount}
+            </span>
           </div>
 
           {canManageOwnProfile ? (
@@ -1025,6 +1119,23 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
                 <SquarePen size={15} />
                 Nova postagem
               </Link>
+            </div>
+          ) : null}
+
+          {!canManageOwnProfile && session?.user?.id && followTableAvailable ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => void handleToggleFollow()}
+                disabled={followLoading}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-60 ${
+                  isFollowing
+                    ? "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    : "bg-black text-white hover:bg-gray-900"
+                }`}
+              >
+                {followLoading ? "Atualizando..." : isFollowing ? "Seguindo" : "Seguir"}
+              </button>
             </div>
           ) : null}
 
