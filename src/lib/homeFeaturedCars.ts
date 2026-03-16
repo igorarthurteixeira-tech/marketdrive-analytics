@@ -100,7 +100,7 @@ function toCard(
     name: `${brand?.name ?? ""} ${vehicle?.name ?? ""} ${version.year ?? ""}`.trim(),
     brandName: brand?.name ?? "",
     brandLogoUrl: toBrandLogoSrc(brand?.logo_path, brand?.name ?? ""),
-    image: vehicle?.image_url ?? version.image_url ?? null,
+    image: version.image_url ?? vehicle?.image_url ?? null,
     authorId: version.created_by ?? null,
     authorName: authorName ?? "Autor da comunidade",
     authorAvatarUrl: authorAvatarUrl ?? null,

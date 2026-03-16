@@ -1,4 +1,4 @@
-import "./globals.css"
+﻿import "./globals.css"
 import Header from "@/components/Header"
 import Footer from "@/components/Footer"
 import AuthProvider from "@/components/AuthProvider"
@@ -9,9 +9,8 @@ export const metadata: Metadata = {
   title: "Base Automotiva",
   description: "Inteligência e Transparência no Mercado Automotivo",
   icons: {
-    icon: [{ url: "/icon.png?v=20260313g" }],
-    shortcut: [{ url: "/favicon.ico?v=20260313g" }],
-    apple: [{ url: "/apple-icon.png?v=20260313g" }],
+    icon: [{ url: "/favicon.ico?v=20260316x" }],
+    shortcut: [{ url: "/favicon.ico?v=20260316x" }],
   },
 }
 
