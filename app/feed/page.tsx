@@ -1046,6 +1046,24 @@ export default function FeedPage() {
   }, [videoCards.length])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleOpenPistoes = () => {
+      if (!videoCards.length) {
+        setInfoMessage("Ainda não há vídeos disponíveis em Pistões.")
+        return
+      }
+
+      setActiveVideoIndex(0)
+      setVideoSequenceOpen(true)
+      setInfoMessage("")
+    }
+
+    window.addEventListener("feed:open-pistoes", handleOpenPistoes)
+    return () => window.removeEventListener("feed:open-pistoes", handleOpenPistoes)
+  }, [videoCards.length])
+
+  useEffect(() => {
     if (!videoSequenceOpen) return
     const active = videoCards[activeVideoIndex]
     if (!active) return
@@ -1309,7 +1327,7 @@ export default function FeedPage() {
 
                     {mediaSrc && card.post.media_kind === "video" ? (
                       <div className="mt-3">
-                        <div className="h-[360px] w-full overflow-hidden rounded-lg border border-gray-200 bg-black">
+                        <div className="mx-auto aspect-[9/16] w-full max-w-[420px] overflow-hidden rounded-lg border border-gray-200 bg-black">
                           <video
                             src={mediaSrc}
                             autoPlay
@@ -1317,7 +1335,7 @@ export default function FeedPage() {
                             muted
                             playsInline
                             preload="metadata"
-                            className="h-full w-full cursor-pointer object-cover"
+                            className="h-full w-full cursor-pointer object-contain"
                             onClick={() => openVideoSequence(card.post.id)}
                           />
                         </div>

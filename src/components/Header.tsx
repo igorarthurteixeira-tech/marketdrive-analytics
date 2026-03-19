@@ -1438,6 +1438,12 @@ export default function Header() {
               <Link
                 href="/feed?pistoes=1"
                 aria-label="Abrir Pistões"
+                onClick={(event) => {
+                  if (pathname === "/feed" && typeof window !== "undefined") {
+                    event.preventDefault()
+                    window.dispatchEvent(new CustomEvent("feed:open-pistoes"))
+                  }
+                }}
                 className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-2.5 py-2 text-gray-700 hover:text-black hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
               >
                 <PistonIcon size={16} />
