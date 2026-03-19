@@ -1,4 +1,4 @@
-import Image from "next/image"
+﻿import Image from "next/image"
 import Link from "next/link"
 import BrandLogo from "@/components/BrandLogo"
 import StarRating from "@/components/ui/StarRating"
@@ -46,11 +46,9 @@ export default function HomePreviewCard({
   return (
     <Link
       href={`/carros/${slug}`}
-      className="group relative w-80 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-2xl"
+      className="group block w-80 rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out"
     >
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-white/0 via-white/0 to-white/50 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-      {imageSrc && (
+      {imageSrc ? (
         <div className="relative h-48 w-full overflow-hidden">
           <Image
             src={imageSrc}
@@ -60,25 +58,27 @@ export default function HomePreviewCard({
             sizes="(max-width: 768px) 100vw, 320px"
           />
         </div>
-      )}
+      ) : null}
+
+      <div className="-mt-px bg-gray-700 px-6 py-3">
+        <h3 className="text-lg font-semibold text-white tracking-tight">{name}</h3>
+      </div>
 
       <div className="p-6">
-        <h3 className="text-lg font-semibold transition-colors duration-300 group-hover:text-red-700">
-          {name}
-        </h3>
-        <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
-          <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
-          <span>{brandName}</span>
+        <UserIdentityBadge
+          name={authorName}
+          profileId={authorId}
+          avatarUrl={authorAvatarUrl}
+          size="xs"
+          disableProfileLink
+        />
+
+        <p className="mt-2 text-gray-500 text-sm transition-colors duration-300 group-hover:text-gray-600">
+          <span className="inline-flex items-center gap-1.5">
+            <BrandLogo src={brandLogoUrl} brandName={brandName} className="h-4 w-4" />
+            <span>{brandName}</span>
+          </span>
         </p>
-        <div className="mt-1">
-          <UserIdentityBadge
-            name={authorName}
-            profileId={authorId}
-            avatarUrl={authorAvatarUrl}
-            size="xs"
-            disableProfileLink
-          />
-        </div>
 
         <div className="mt-3">
           <StarRating rating={displayRating} showValue={hasRatings} />
@@ -89,12 +89,11 @@ export default function HomePreviewCard({
           </p>
         </div>
 
-        <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+        <p className="mt-2 text-sm text-gray-600 line-clamp-2">
           <span className="font-medium text-gray-800">Ponto em destaque:</span>{" "}
           {topPositive ?? "Comunidade em crescimento para este modelo."}
         </p>
       </div>
-
     </Link>
   )
 }

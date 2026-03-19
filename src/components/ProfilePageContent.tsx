@@ -153,6 +153,7 @@ type UserPostRow = {
   media_path: string | null
   media_kind: "image" | "video" | null
   created_at: string
+  moderation_state?: string | null
 }
 
 type VehicleStats = {
@@ -775,7 +776,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
 
       const postsRes = await supabase
         .from("user_posts")
-        .select("id,type,title,description,media_path,media_kind,created_at")
+        .select("id,type,title,description,media_path,media_kind,created_at,moderation_state")
         .eq("author_user_id", profileId)
         .order("created_at", { ascending: false })
 
@@ -849,7 +850,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
 
   const handleToggleFollow = async () => {
     if (!session?.user?.id) {
-      setErrorMessage("Voce precisa entrar para seguir perfis.")
+      setErrorMessage("Você precisa entrar para seguir perfis.")
       return
     }
     if (!profileId || isOwnProfile || !followTableAvailable || followLoading) return
@@ -869,7 +870,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
         })
 
     if (result.error) {
-      setErrorMessage(`Nao foi possivel atualizar seguidores: ${result.error.message}`)
+      setErrorMessage(`Não foi possivel atualizar seguidores: ${result.error.message}`)
       setFollowLoading(false)
       return
     }
@@ -1388,7 +1389,7 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
         </div>
 
         {loadingContributions ? (
-          <p className="mt-4 text-sm text-gray-600">Carregando conteudo...</p>
+          <p className="mt-4 text-sm text-gray-600">Carregando conteúdo...</p>
         ) : null}
 
         {!loadingContributions && activeTab === "vehicles" ? (
@@ -1477,10 +1478,25 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
                 const mediaSrc = toPostMediaSrc(post.media_path)
                 return (
                   <article key={post.id} className="rounded-xl border border-gray-200 p-4">
-                    <p className="text-xs uppercase tracking-[0.08em] text-gray-500">
-                      {post.type === "noticia" ? "Noticia" : "Publicacao"} •{" "}
-                      {new Date(post.created_at).toLocaleDateString("pt-BR")}
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs uppercase tracking-[0.08em] text-gray-500">
+                        {post.type === "noticia" ? "Noticia" : "Publicacao"} •{" "}
+                        {new Date(post.created_at).toLocaleDateString("pt-BR")}
+                      </p>
+                      {canManageOwnProfile ? (
+                        <Link
+                          href={`/postagens/editar?postId=${post.id}`}
+                          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 transition"
+                        >
+                          Editar
+                        </Link>
+                      ) : null}
+                    </div>
+                    {post.moderation_state && post.moderation_state !== "public" ? (
+                      <p className="mt-2 text-xs text-gray-600">
+                        Status: {post.moderation_state.replaceAll("_", " ")}
+                      </p>
+                    ) : null}
                     {post.title ? (
                       <h3 className="mt-1 text-base font-semibold text-gray-900">{post.title}</h3>
                     ) : null}
@@ -1510,3 +1526,4 @@ export default function ProfilePageContent({ forcedProfileId, editMode = false }
     </div>
   )
 }
+

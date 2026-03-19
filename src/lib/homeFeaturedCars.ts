@@ -224,7 +224,11 @@ async function enrichCards(selected: VersionRow[]): Promise<HomeCar[]> {
   )
 }
 
-export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
+type HomeFeaturedOptions = {
+  fixedOnly?: boolean
+}
+
+export async function getHomeFeaturedCars(options?: HomeFeaturedOptions): Promise<HomeCar[]> {
   const selectWithFeatured = `
     id,
     slug,
@@ -252,6 +256,29 @@ export async function getHomeFeaturedCars(): Promise<HomeCar[]> {
       brands ( name, logo_path )
     )
   `
+
+  if (options?.fixedOnly) {
+    const fixedOnlyRes = await supabase
+      .from("vehicle_versions")
+      .select(selectWithFeatured)
+      .eq("home_featured", true)
+      .order("home_featured_order", { ascending: true, nullsFirst: false })
+      .order("year", { ascending: false })
+      .limit(MAX_HOME_CARDS)
+
+    if (!fixedOnlyRes.error) {
+      const fixedRows = (fixedOnlyRes.data as VersionRow[] | null) ?? []
+      if (fixedRows.length > 0) return enrichCards(fixedRows)
+    }
+
+    const fallbackTopRes = await supabase
+      .from("vehicle_versions")
+      .select(selectFallback)
+      .order("year", { ascending: false })
+      .limit(MAX_HOME_CARDS)
+    if (fallbackTopRes.error) return []
+    return enrichCards((fallbackTopRes.data as VersionRow[] | null) ?? [])
+  }
 
   const initial = await supabase
     .from("vehicle_versions")

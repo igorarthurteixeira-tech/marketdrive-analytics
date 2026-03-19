@@ -42,6 +42,8 @@ type EnrichedVehicle = {
   rating: number | null
   ratingCount: number
   topPositive: string | null
+  homeFeatured: boolean
+  homeFeaturedOrder: number | null
 }
 
 type VehicleRow = {
@@ -56,6 +58,8 @@ type VehicleRow = {
   version_name: string | null
   version_tier: string | null
   body_style?: string | null
+  home_featured?: boolean | null
+  home_featured_order?: number | null
   vehicles:
     | {
         name: string | null
@@ -173,6 +177,8 @@ export default function CarrosPage() {
   const [versionTierSort, setVersionTierSort] = useState<"tier_asc" | "tier_desc">("tier_asc")
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareSelectionError, setCompareSelectionError] = useState("")
+  const [isHomeAdmin, setIsHomeAdmin] = useState(false)
+  const [updatingHomeId, setUpdatingHomeId] = useState<string | null>(null)
   const hadVehiclesCacheOnLoad = useRef(false)
 
   useEffect(() => {
@@ -253,6 +259,8 @@ export default function CarrosPage() {
           version_name,
           version_tier,
           body_style,
+          home_featured,
+          home_featured_order,
           vehicles (
             name,
             image_url,
@@ -436,6 +444,8 @@ export default function CarrosPage() {
           rating,
           ratingCount: ratingStats?.total ?? 0,
           topPositive: rankedPoints[0]?.description ?? null,
+          homeFeatured: version.home_featured === true,
+          homeFeaturedOrder: version.home_featured_order ?? null,
         }
       })
 
@@ -472,6 +482,86 @@ export default function CarrosPage() {
 
     fetchPlan()
   }, [session])
+
+  useEffect(() => {
+    const checkHomeAdmin = async () => {
+      if (!session?.user?.id) {
+        setIsHomeAdmin(false)
+        return
+      }
+      const result = await supabase.rpc("is_moderation_admin", {
+        p_user_id: session.user.id,
+      })
+      setIsHomeAdmin(Boolean(result.data))
+    }
+    void checkHomeAdmin()
+  }, [session?.user?.id])
+
+  const toggleHomeFeatured = async (version: EnrichedVehicle) => {
+    if (!isHomeAdmin) return
+
+    setCompareSelectionError("")
+    setUpdatingHomeId(version.id)
+    try {
+      const currentFixed = vehicles
+        .filter((item) => item.homeFeatured)
+        .sort(
+          (a, b) =>
+            (a.homeFeaturedOrder ?? Number.MAX_SAFE_INTEGER) -
+            (b.homeFeaturedOrder ?? Number.MAX_SAFE_INTEGER)
+        )
+
+      if (!version.homeFeatured && currentFixed.length >= 5) {
+        setCompareSelectionError("Limite de 5 versões fixadas para a Home.")
+        return
+      }
+
+      let nextOrder: number | null = null
+      if (!version.homeFeatured) {
+        const used = new Set(
+          currentFixed
+            .map((item) => item.homeFeaturedOrder)
+            .filter((value): value is number => typeof value === "number")
+        )
+        for (let i = 1; i <= 5; i += 1) {
+          if (!used.has(i)) {
+            nextOrder = i
+            break
+          }
+        }
+        if (!nextOrder) nextOrder = Math.min(5, currentFixed.length + 1)
+      }
+
+      const updateRes = await supabase
+        .from("vehicle_versions")
+        .update({
+          home_featured: !version.homeFeatured,
+          home_featured_order: version.homeFeatured ? null : nextOrder,
+        })
+        .eq("id", version.id)
+
+      if (updateRes.error) {
+        setCompareSelectionError(
+          `Falha ao atualizar destaque da Home: ${updateRes.error.message}`
+        )
+        return
+      }
+
+      setVehicles((current) =>
+        current.map((item) =>
+          item.id === version.id
+            ? {
+                ...item,
+                homeFeatured: !version.homeFeatured,
+                homeFeaturedOrder: version.homeFeatured ? null : nextOrder,
+              }
+            : item
+        )
+      )
+    } finally {
+      setUpdatingHomeId(null)
+    }
+  }
 
   const brands = useMemo(
     () =>
@@ -518,6 +608,14 @@ export default function CarrosPage() {
     const direction = versionTierSort === "tier_asc" ? 1 : -1
 
     return [...filteredVehicles].sort((a, b) => {
+      // Featured versions always stay at the top, regardless of current sort mode.
+      if (a.homeFeatured !== b.homeFeatured) return a.homeFeatured ? -1 : 1
+      if (a.homeFeatured && b.homeFeatured) {
+        const orderA = a.homeFeaturedOrder ?? Number.MAX_SAFE_INTEGER
+        const orderB = b.homeFeaturedOrder ?? Number.MAX_SAFE_INTEGER
+        if (orderA !== orderB) return orderA - orderB
+      }
+
       const tierA = tierIndex.get(normalizeTierKey(a.versionTier)) ?? Number.MAX_SAFE_INTEGER
       const tierB = tierIndex.get(normalizeTierKey(b.versionTier)) ?? Number.MAX_SAFE_INTEGER
       if (tierA !== tierB) return (tierA - tierB) * direction
@@ -664,6 +762,22 @@ export default function CarrosPage() {
               />
               Comparar
             </label>
+            {isHomeAdmin ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void toggleHomeFeatured(version)
+                }}
+                className="absolute left-3 top-3 z-20 inline-flex items-center gap-2 rounded-md bg-black/80 px-2 py-1 text-xs font-medium text-white shadow-sm backdrop-blur hover:bg-black transition-colors disabled:opacity-60"
+                disabled={updatingHomeId === version.id}
+              >
+                {version.homeFeatured
+                  ? `Fixado na Home${version.homeFeaturedOrder ? ` #${version.homeFeaturedOrder}` : ""}`
+                  : "Fixar na Home"}
+              </button>
+            ) : null}
             <Link
               href={`/carros/${version.slug}`}
               className="group block border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-out cursor-pointer"

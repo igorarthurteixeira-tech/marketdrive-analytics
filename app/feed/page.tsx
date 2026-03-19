@@ -1,9 +1,9 @@
-"use client"
+﻿"use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { Check, Flag, MessageCircle, MessageSquareReply, Newspaper, Pencil, SquarePen, Trash2, X } from "lucide-react"
+import { Check, ChevronDown, ChevronUp, Eye, Flag, MessageCircle, MessageSquareReply, Newspaper, Pause, Pencil, Play, SquarePen, Trash2, Volume2, VolumeX, X } from "lucide-react"
 import { supabase } from "@/lib/supabaseClient"
 import { useAuth } from "@/components/AuthProvider"
 import UserIdentityBadge from "@/components/UserIdentityBadge"
@@ -29,6 +29,7 @@ type FeedPost = {
   media_kind: "image" | "video" | null
   related_vehicle_version_id: string | null
   created_at: string
+  moderation_state?: "public" | "interim_suspended" | "suspended" | "suspended_revision" | "scheduled_delete"
 }
 
 type ProfileRow = {
@@ -91,6 +92,11 @@ type PostVoteStats = {
   userVote: boolean | null
 }
 
+type PostViewRow = {
+  post_id: string
+  user_id: string
+}
+
 const toVehicleLabel = (version: VehicleVersionMini | null) => {
   if (!version) return "Versao"
   const vehicle = Array.isArray(version.vehicles) ? version.vehicles[0] : version.vehicles
@@ -127,6 +133,7 @@ export default function FeedPage() {
   const [postsEnabled, setPostsEnabled] = useState(true)
   const [postVotesEnabled, setPostVotesEnabled] = useState(true)
   const [postCommentsEnabled, setPostCommentsEnabled] = useState(true)
+  const [postViewsEnabled, setPostViewsEnabled] = useState(true)
   const [submittingVotePostId, setSubmittingVotePostId] = useState<string | null>(null)
   const [submittingCommentPostId, setSubmittingCommentPostId] = useState<string | null>(null)
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
@@ -141,11 +148,27 @@ export default function FeedPage() {
   const [hotDiscussions, setHotDiscussions] = useState<HotDiscussion[]>([])
   const [weeklyTop, setWeeklyTop] = useState<WeeklyTop[]>([])
   const [postVotesByPost, setPostVotesByPost] = useState<Record<string, PostVoteStats>>({})
+  const [postViewsByPost, setPostViewsByPost] = useState<Record<string, number>>({})
   const [postCommentsByPost, setPostCommentsByPost] = useState<Record<string, PostCommentRow[]>>({})
   const [commentDraftByPost, setCommentDraftByPost] = useState<Record<string, string>>({})
   const [replyDraftByComment, setReplyDraftByComment] = useState<Record<string, string>>({})
   const [activeReplyCommentIdByPost, setActiveReplyCommentIdByPost] = useState<Record<string, string | null>>({})
   const [visibleCommentsCountByPost, setVisibleCommentsCountByPost] = useState<Record<string, number>>({})
+  const [expandedDescriptionByPost, setExpandedDescriptionByPost] = useState<Record<string, boolean>>({})
+  const [videoSequenceOpen, setVideoSequenceOpen] = useState(false)
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0)
+  const [isSequenceMuted, setIsSequenceMuted] = useState(true)
+  const [sequenceVolume, setSequenceVolume] = useState(0.6)
+  const [isSequencePlaying, setIsSequencePlaying] = useState(true)
+  const [sequenceProgress, setSequenceProgress] = useState(0)
+  const [isVideoSwitching, setIsVideoSwitching] = useState(false)
+  const [hiddenPostIds, setHiddenPostIds] = useState<string[]>([])
+  const sequenceVideoRef = useRef<HTMLVideoElement | null>(null)
+  const autoOpenedPistoes = useRef(false)
+  const videoSwitchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const viewedPostIdsRef = useRef<Set<string>>(new Set())
+  const postCardElementsRef = useRef<Record<string, HTMLElement | null>>({})
+  const pendingPostViewTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [reportTarget, setReportTarget] = useState<{
     contentType: ModerationContentType
     contentId: string
@@ -162,6 +185,14 @@ export default function FeedPage() {
       setInfoMessage("")
 
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      const moderationMaintenanceRes = await supabase.rpc("moderation_process_due_post_actions")
+      if (
+        moderationMaintenanceRes.error &&
+        !/function|schema cache|does not exist/i.test(moderationMaintenanceRes.error.message ?? "")
+      ) {
+        setErrorMessage(`Falha ao processar ações de moderação: ${moderationMaintenanceRes.error.message}`)
+      }
 
       if (session?.user?.id) {
         const followsRes = await supabase
@@ -219,8 +250,9 @@ export default function FeedPage() {
           supabase
             .from("user_posts")
             .select(
-              "id,author_user_id,type,title,description,media_path,media_kind,related_vehicle_version_id,created_at"
+              "id,author_user_id,type,title,description,media_path,media_kind,related_vehicle_version_id,created_at,moderation_state"
             )
+            .eq("moderation_state", "public")
             .order("created_at", { ascending: false })
             .limit(30),
         ])
@@ -353,6 +385,23 @@ export default function FeedPage() {
         }
       }
 
+      let fetchedPostViews: PostViewRow[] = []
+      if (postIds.length > 0) {
+        const postViewsRes = await supabase
+          .from("user_post_views")
+          .select("post_id,user_id")
+          .in("post_id", postIds)
+        if (
+          postViewsRes.error &&
+          /relation|table|schema cache|does not exist/i.test(postViewsRes.error.message ?? "")
+        ) {
+          setPostViewsEnabled(false)
+        } else {
+          setPostViewsEnabled(true)
+          fetchedPostViews = (postViewsRes.data as PostViewRow[] | null) ?? []
+        }
+      }
+
       const voteStatsByPost: Record<string, PostVoteStats> = {}
       for (const postId of postIds) {
         voteStatsByPost[postId] = { confirmed: 0, denied: 0, userVote: null }
@@ -373,6 +422,23 @@ export default function FeedPage() {
         commentsByPost[item.post_id] = [...(commentsByPost[item.post_id] ?? []), item]
       }
       setPostCommentsByPost(commentsByPost)
+
+      const viewsByPost: Record<string, number> = {}
+      for (const postId of postIds) {
+        viewsByPost[postId] = 0
+      }
+      for (const row of fetchedPostViews) {
+        viewsByPost[row.post_id] = (viewsByPost[row.post_id] ?? 0) + 1
+      }
+      setPostViewsByPost(viewsByPost)
+      if (session?.user?.id) {
+        const mine = fetchedPostViews
+          .filter((row) => row.user_id === session.user.id)
+          .map((row) => row.post_id)
+        viewedPostIdsRef.current = new Set(mine)
+      } else {
+        viewedPostIdsRef.current = new Set()
+      }
 
       const profileIds = Array.from(
         new Set(
@@ -479,6 +545,32 @@ export default function FeedPage() {
     session?.user?.id,
     sortMode,
   ])
+
+  const registerPostView = useCallback(async (postId: string) => {
+    if (!session?.user?.id) return
+    if (!postViewsEnabled) return
+    if (viewedPostIdsRef.current.has(postId)) return
+
+    viewedPostIdsRef.current.add(postId)
+    setPostViewsByPost((prev) => ({
+      ...prev,
+      [postId]: (prev[postId] ?? 0) + 1,
+    }))
+
+    const request = await supabase
+      .from("user_post_views")
+      .insert({ post_id: postId, user_id: session.user.id })
+
+    if (request.error) {
+      // Já existe visualização desse usuário para esse post: não trata como falha.
+      if ((request.error as { code?: string }).code === "23505") return
+      viewedPostIdsRef.current.delete(postId)
+      setPostViewsByPost((prev) => ({
+        ...prev,
+        [postId]: Math.max(0, (prev[postId] ?? 1) - 1),
+      }))
+    }
+  }, [postViewsEnabled, session?.user?.id])
 
   const voteOnPost = async (postId: string, isConfirmed: boolean) => {
     if (!session?.user?.id) {
@@ -653,11 +745,11 @@ export default function FeedPage() {
 
   const submitPostReply = async (postId: string, parentCommentId: string) => {
     if (!session?.user?.id) {
-      setErrorMessage("FaÃ§a login para responder.")
+      setErrorMessage("Faça login para responder.")
       return
     }
     if (!postCommentsEnabled) {
-      setErrorMessage("ComentÃ¡rios em publicaÃ§Ãµes ainda nÃ£o foram habilitados no banco.")
+      setErrorMessage("Comentários em publicações ainda não foram habilitados no banco.")
       return
     }
 
@@ -795,7 +887,9 @@ export default function FeedPage() {
   }
 
   const postCards = useMemo(() => {
-    return filteredPosts.map((post) => {
+    return filteredPosts
+      .filter((post) => !hiddenPostIds.includes(post.id))
+      .map((post) => {
       const author = profilesById[post.author_user_id]
       const version =
         post.related_vehicle_version_id ? versionsById[post.related_vehicle_version_id] ?? null : null
@@ -807,7 +901,201 @@ export default function FeedPage() {
         relatedVersion: version,
       }
     })
+  }, [filteredPosts, hiddenPostIds, profilesById, versionsById])
+
+  const videoCards = useMemo(() => {
+    return filteredPosts
+      .filter((post) => post.media_kind === "video" && Boolean(toPostMediaSrc(post.media_path)))
+      .map((post) => {
+      const author = profilesById[post.author_user_id]
+      const version =
+        post.related_vehicle_version_id ? versionsById[post.related_vehicle_version_id] ?? null : null
+      return {
+        post,
+        authorName: author?.name ?? "Usuario",
+        authorUsername: author?.username ?? null,
+        authorAvatar: author?.avatar_url ?? null,
+        relatedVersion: version,
+      }
+      })
   }, [filteredPosts, profilesById, versionsById])
+
+  const openVideoSequence = (postId: string) => {
+    const index = videoCards.findIndex((item) => item.post.id === postId)
+    if (index < 0) return
+    setActiveVideoIndex(index)
+    setVideoSequenceOpen(true)
+  }
+
+  const switchToVideo = (nextIndex: number) => {
+    if (!videoCards.length) return
+    if (videoSwitchTimerRef.current) {
+      clearTimeout(videoSwitchTimerRef.current)
+      videoSwitchTimerRef.current = null
+    }
+
+    setIsVideoSwitching(true)
+    videoSwitchTimerRef.current = setTimeout(() => {
+      setActiveVideoIndex(nextIndex)
+      setSequenceProgress(0)
+      requestAnimationFrame(() => setIsVideoSwitching(false))
+    }, 120)
+  }
+
+  const goToNextVideo = () => {
+    if (!videoCards.length) return
+    const next = (activeVideoIndex + 1) % videoCards.length
+    switchToVideo(next)
+  }
+
+  const goToPrevVideo = () => {
+    if (!videoCards.length) return
+    const next = (activeVideoIndex - 1 + videoCards.length) % videoCards.length
+    switchToVideo(next)
+  }
+
+  useEffect(() => {
+    if (!videoSequenceOpen) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const activeEl = document.activeElement as HTMLElement | null
+      const isTyping =
+        activeEl?.tagName === "INPUT" ||
+        activeEl?.tagName === "TEXTAREA" ||
+        activeEl?.isContentEditable
+      if (isTyping) return
+
+      if (event.key === "Escape") setVideoSequenceOpen(false)
+      if (event.key.toLowerCase() === "m") {
+        event.preventDefault()
+        setIsSequenceMuted((prev) => !prev)
+        return
+      }
+      if (event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        setIsSequencePlaying((prev) => !prev)
+        return
+      }
+
+      if (event.ctrlKey && event.key === "ArrowUp") {
+        event.preventDefault()
+        setSequenceVolume((prev) => {
+          const next = Math.min(1, Number((prev + 0.05).toFixed(2)))
+          if (next > 0) setIsSequenceMuted(false)
+          return next
+        })
+        return
+      }
+
+      if (event.ctrlKey && event.key === "ArrowDown") {
+        event.preventDefault()
+        setSequenceVolume((prev) => {
+          const next = Math.max(0, Number((prev - 0.05).toFixed(2)))
+          if (next <= 0) setIsSequenceMuted(true)
+          return next
+        })
+        return
+      }
+
+      if (event.key === "ArrowDown") goToNextVideo()
+      if (event.key === "ArrowUp") goToPrevVideo()
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [videoSequenceOpen, videoCards.length, activeVideoIndex])
+
+  useEffect(() => {
+    const video = sequenceVideoRef.current
+    if (!video) return
+    video.muted = isSequenceMuted
+    video.volume = sequenceVolume
+  }, [activeVideoIndex, isSequenceMuted, sequenceVolume, videoSequenceOpen])
+
+  useEffect(() => {
+    const video = sequenceVideoRef.current
+    if (!video) return
+    if (isSequencePlaying) {
+      const attempt = video.play()
+      if (attempt && typeof attempt.catch === "function") {
+        void attempt.catch(() => undefined)
+      }
+    } else {
+      video.pause()
+    }
+  }, [activeVideoIndex, isSequencePlaying, videoSequenceOpen])
+
+  useEffect(() => {
+    return () => {
+      if (videoSwitchTimerRef.current) {
+        clearTimeout(videoSwitchTimerRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const shouldAutoOpen = new URLSearchParams(window.location.search).get("pistoes") === "1"
+    if (!shouldAutoOpen) return
+    if (autoOpenedPistoes.current) return
+    if (!videoCards.length) return
+
+    autoOpenedPistoes.current = true
+    setActiveVideoIndex(0)
+    setVideoSequenceOpen(true)
+  }, [videoCards.length])
+
+  useEffect(() => {
+    if (!videoSequenceOpen) return
+    const active = videoCards[activeVideoIndex]
+    if (!active) return
+    void registerPostView(active.post.id)
+  }, [videoSequenceOpen, activeVideoIndex, videoCards, registerPostView])
+
+  useEffect(() => {
+    if (!postCards.length) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const target = entry.target as HTMLElement
+          const postId = target.dataset.postId
+          if (!postId) continue
+
+          const isQualifiedView = entry.isIntersecting && entry.intersectionRatio >= 0.6
+          const existingTimer = pendingPostViewTimersRef.current.get(postId)
+
+          if (isQualifiedView && !viewedPostIdsRef.current.has(postId) && !existingTimer) {
+            const timer = setTimeout(() => {
+              pendingPostViewTimersRef.current.delete(postId)
+              void registerPostView(postId)
+            }, 2000)
+            pendingPostViewTimersRef.current.set(postId, timer)
+            continue
+          }
+
+          if (!isQualifiedView && existingTimer) {
+            clearTimeout(existingTimer)
+            pendingPostViewTimersRef.current.delete(postId)
+          }
+        }
+      },
+      { threshold: [0, 0.6, 1] }
+    )
+
+    for (const card of postCards) {
+      const element = postCardElementsRef.current[card.post.id]
+      if (element) observer.observe(element)
+    }
+
+    return () => {
+      observer.disconnect()
+      for (const timer of pendingPostViewTimersRef.current.values()) {
+        clearTimeout(timer)
+      }
+      pendingPostViewTimersRef.current.clear()
+    }
+  }, [postCards, registerPostView])
 
   return (
     <main className="min-h-screen max-w-6xl mx-auto px-6 md:px-8 pt-28 pb-16 space-y-8">
@@ -869,14 +1157,23 @@ export default function FeedPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[3fr_2fr]">
-        <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,4fr)_minmax(0,2fr)]">
+        <article id="pistoes" className="min-w-0 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="inline-flex items-center gap-2 text-xl font-semibold text-gray-900">
               <Newspaper size={18} />
-              Publicacoes da comunidade
+              Publicações da comunidade
             </h2>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {hiddenPostIds.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setHiddenPostIds([])}
+                  className="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Mostrar ocultas ({hiddenPostIds.length})
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setSortMode("recent")}
@@ -910,8 +1207,8 @@ export default function FeedPage() {
           {postsEnabled && !postCards.length ? (
             <p className="mt-3 text-sm text-gray-600">
               {effectiveFeedFilter === "following"
-                ? "Nenhuma publicacao de perfis que voce segue."
-                : "Nenhuma publicacao ainda."}
+                ? "Nenhuma publicação de perfis que você segue."
+                : "Nenhuma publicação ainda."}
             </p>
           ) : null}
 
@@ -924,6 +1221,7 @@ export default function FeedPage() {
                   denied: 0,
                   userVote: null,
                 }
+                const viewsCount = postViewsByPost[card.post.id] ?? 0
                 const postComments = postCommentsByPost[card.post.id] ?? []
                 const visibleCount = visibleCommentsCountByPost[card.post.id] ?? 0
                 const parentComments = postComments.filter((item) => !item.parent_comment_id)
@@ -935,8 +1233,20 @@ export default function FeedPage() {
                 }, {})
                 const activeReplyCommentId = activeReplyCommentIdByPost[card.post.id] ?? null
                 const remainingComments = Math.max(0, parentComments.length - visibleComments.length)
+                const isVideoPost = card.post.media_kind === "video"
                 return (
-                  <article key={card.post.id} className="rounded-xl border border-gray-200 p-4">
+                  <article
+                    key={card.post.id}
+                    data-post-id={card.post.id}
+                    ref={(element) => {
+                      postCardElementsRef.current[card.post.id] = element
+                    }}
+                    className={`min-w-0 overflow-hidden rounded-xl border p-4 ${
+                      isVideoPost
+                        ? "border-blue-300 bg-gradient-to-b from-blue-50/60 to-white"
+                        : "border-gray-200"
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <UserIdentityBadge
                         name={card.authorName}
@@ -962,6 +1272,19 @@ export default function FeedPage() {
                             <Flag size={13} />
                           </button>
                         ) : null}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setHiddenPostIds((prev) =>
+                              prev.includes(card.post.id) ? prev : [...prev, card.post.id]
+                            )
+                          }
+                          className="inline-flex items-center rounded-md border border-gray-300 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50 hover:text-black"
+                          title="Ocultar publicação temporariamente"
+                          aria-label="Ocultar publicação temporariamente"
+                        >
+                          Ocultar
+                        </button>
                       </div>
                     </div>
 
@@ -969,6 +1292,11 @@ export default function FeedPage() {
                       {card.post.type === "noticia" ? "Noticia" : "Publicacao"}
                       {card.authorUsername ? ` - @${card.authorUsername}` : ""}
                     </p>
+                    {isVideoPost ? (
+                      <span className="mt-1 inline-flex rounded-full border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                        Pistoes
+                      </span>
+                    ) : null}
                     {card.post.title ? (
                       <h3 className="mt-1 text-lg font-semibold text-gray-900">{card.post.title}</h3>
                     ) : null}
@@ -980,16 +1308,47 @@ export default function FeedPage() {
                     ) : null}
 
                     {mediaSrc && card.post.media_kind === "video" ? (
-                      <video
-                        src={mediaSrc}
-                        controls
-                        className="mt-3 h-72 w-full rounded-lg border border-gray-200 bg-black object-cover"
-                      />
+                      <div className="mt-3">
+                        <div className="h-[360px] w-full overflow-hidden rounded-lg border border-gray-200 bg-black">
+                          <video
+                            src={mediaSrc}
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="h-full w-full cursor-pointer object-cover"
+                            onClick={() => openVideoSequence(card.post.id)}
+                          />
+                        </div>
+                        <p className="mt-1 text-[11px] text-blue-700">Toque no vídeo para abrir em sequência.</p>
+                      </div>
                     ) : null}
 
-                    <p className="mt-3 text-sm text-gray-800 whitespace-pre-wrap">
-                      {card.post.description}
-                    </p>
+                    <div className="mt-3">
+                      <p
+                        className={`text-sm text-gray-800 whitespace-pre-wrap ${
+                          expandedDescriptionByPost[card.post.id] ? "" : "line-clamp-2"
+                        } break-words [overflow-wrap:anywhere]`}
+                      >
+                        {card.post.description}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!expandedDescriptionByPost[card.post.id]) {
+                            void registerPostView(card.post.id)
+                          }
+                          setExpandedDescriptionByPost((prev) => ({
+                            ...prev,
+                            [card.post.id]: !prev[card.post.id],
+                          }))
+                        }}
+                        className="mt-1 text-xs font-medium text-gray-700 underline underline-offset-2 hover:text-black"
+                      >
+                        {expandedDescriptionByPost[card.post.id] ? "Ver menos" : "Ver mais"}
+                      </button>
+                    </div>
 
                     {card.relatedVersion ? (
                       <Link
@@ -1005,10 +1364,10 @@ export default function FeedPage() {
                         type="button"
                         onClick={() => void voteOnPost(card.post.id, true)}
                         disabled={!postVotesEnabled || submittingVotePostId === card.post.id}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-60 ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all duration-200 disabled:opacity-60 ${
                           voteStats.userVote === true
-                            ? "bg-green-600 border-green-600 text-white"
-                            : "border-green-300 text-green-700 hover:bg-green-50"
+                            ? "bg-green-600 border-green-600 text-white shadow-md shadow-green-500/30"
+                            : "border-green-300 text-green-700 hover:-translate-y-[1px] hover:scale-[1.02] hover:border-green-400 hover:bg-green-50 hover:shadow-md hover:shadow-green-300/40 active:translate-y-0 active:scale-[0.98]"
                         }`}
                       >
                         <Check size={14} />
@@ -1018,15 +1377,19 @@ export default function FeedPage() {
                         type="button"
                         onClick={() => void voteOnPost(card.post.id, false)}
                         disabled={!postVotesEnabled || submittingVotePostId === card.post.id}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-60 ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all duration-200 disabled:opacity-60 ${
                           voteStats.userVote === false
-                            ? "bg-red-600 border-red-600 text-white"
-                            : "border-red-300 text-red-700 hover:bg-red-50"
+                            ? "bg-red-600 border-red-600 text-white shadow-md shadow-red-500/30"
+                            : "border-red-300 text-red-700 hover:-translate-y-[1px] hover:scale-[1.02] hover:border-red-400 hover:bg-red-50 hover:shadow-md hover:shadow-red-300/40 active:translate-y-0 active:scale-[0.98]"
                         }`}
                       >
                         <X size={14} />
                         {voteStats.denied}
                       </button>
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 bg-gray-50">
+                        <Eye size={14} />
+                        {viewsCount}
+                      </span>
                       <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 bg-gray-50">
                         <MessageCircle size={14} />
                         {postComments.length}
@@ -1036,7 +1399,7 @@ export default function FeedPage() {
                     <div className="mt-3 border-t border-gray-200 pt-3 space-y-2">
                       {!postCommentsEnabled ? (
                         <p className="text-xs text-gray-500">
-                          Comentarios em publicacoes ainda nao foram habilitados no banco.
+                          Comentários em publicações ainda não foram habilitados no banco.
                         </p>
                       ) : null}
 
@@ -1050,7 +1413,7 @@ export default function FeedPage() {
                               [card.post.id]: event.target.value,
                             }))
                           }
-                          placeholder="Comentar publicacao..."
+                          placeholder="Comentar publicação..."
                           className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
                         />
                         <button
@@ -1089,10 +1452,10 @@ export default function FeedPage() {
                         className="text-xs text-gray-600 hover:text-black underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {visibleCount === 0
-                          ? `Exibir comentarios (${parentComments.length})`
+                          ? `Exibir comentários (${parentComments.length})`
                           : remainingComments > 0
-                            ? `Exibir mais 8 comentarios (${remainingComments} restantes)`
-                            : "Ocultar comentarios"}
+                            ? `Exibir mais 8 comentários (${remainingComments} restantes)`
+                            : "Ocultar comentários"}
                       </button>
 
                       {visibleComments.map((comment) => {
@@ -1206,7 +1569,9 @@ export default function FeedPage() {
                                 </div>
                               </div>
                             ) : (
-                              <p className="mt-1 text-sm text-gray-800">{comment.content}</p>
+                              <p className="mt-1 text-sm text-gray-800 break-words [overflow-wrap:anywhere]">
+                                {comment.content}
+                              </p>
                             )}
                             {activeReplyCommentId === comment.id ? (
                               <div className="mt-2 flex items-center gap-2">
@@ -1219,7 +1584,7 @@ export default function FeedPage() {
                                       [comment.id]: event.target.value,
                                     }))
                                   }
-                                  placeholder="Responder comentario..."
+                                  placeholder="Responder comentário..."
                                   className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs"
                                 />
                                 <button
@@ -1346,7 +1711,9 @@ export default function FeedPage() {
                                           </div>
                                         </div>
                                       ) : (
-                                        <p className="mt-1 text-xs text-gray-800">{reply.content}</p>
+                                        <p className="mt-1 text-xs text-gray-800 break-words [overflow-wrap:anywhere]">
+                                          {reply.content}
+                                        </p>
                                       )}
                                       {activeReplyCommentId === reply.id ? (
                                         <div className="mt-2 flex items-center gap-2">
@@ -1359,7 +1726,7 @@ export default function FeedPage() {
                                                 [reply.id]: event.target.value,
                                               }))
                                             }
-                                            placeholder="Responder comentario..."
+                                            placeholder="Responder comentário..."
                                             className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs"
                                           />
                                           <button
@@ -1391,7 +1758,7 @@ export default function FeedPage() {
           ) : null}
         </article>
 
-        <aside className="grid gap-4">
+        <aside className="min-w-0 grid gap-4">
           <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm min-h-[250px]">
             <h3 className="text-lg font-semibold text-gray-900">Top da semana</h3>
             <p className="mt-1 text-xs text-gray-500">Atualizacao diaria (janela de 7 dias)</p>
@@ -1426,7 +1793,7 @@ export default function FeedPage() {
           </article>
 
           <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm min-h-[250px]">
-            <h3 className="text-lg font-semibold text-gray-900">Discussoes em alta</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Discussões em alta</h3>
             <div className="mt-3 space-y-2">
               {hotDiscussions.map((item) => {
                 const version = versionsById[item.vehicleVersionId] ?? null
@@ -1439,7 +1806,7 @@ export default function FeedPage() {
                   >
                     <p className="font-medium text-gray-900">{toVehicleLabel(version)}</p>
                     <p className="text-xs text-gray-600">
-                      {item.comments} comentarios - {item.votes} votos
+                      {item.comments} comentários - {item.votes} votos
                     </p>
                   </Link>
                 )
@@ -1449,7 +1816,7 @@ export default function FeedPage() {
           </article>
 
           <article className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm min-h-[250px]">
-            <h3 className="text-lg font-semibold text-gray-900">Novos modelos/versoes</h3>
+            <h3 className="text-lg font-semibold text-gray-900">Novos modelos/versões</h3>
             <div className="mt-3 space-y-2">
               {newVersions.map((version) => (
                 <Link
@@ -1542,6 +1909,384 @@ export default function FeedPage() {
           </div>
         </div>
       ) : null}
+
+      {videoSequenceOpen && videoCards.length > 0 ? (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4"
+          onWheel={(event) => {
+            if (event.deltaY > 0) goToNextVideo()
+            else if (event.deltaY < 0) goToPrevVideo()
+          }}
+        >
+          <div className="w-full max-w-6xl rounded-2xl border border-gray-700 bg-black p-3 shadow-2xl">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-gray-300">
+                  Pistões
+                </p>
+                <span className="inline-flex items-center gap-1 rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-300">
+                  <Eye size={12} />
+                  {postViewsByPost[videoCards[activeVideoIndex].post.id] ?? 0}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void voteOnPost(videoCards[activeVideoIndex].post.id, true)}
+                  disabled={!postVotesEnabled || submittingVotePostId === videoCards[activeVideoIndex].post.id}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                    (postVotesByPost[videoCards[activeVideoIndex].post.id]?.userVote ?? null) === true
+                      ? "border-green-500 bg-green-600 text-white shadow-md shadow-green-500/30"
+                      : "border-green-400 text-green-300 transition-all duration-200 hover:-translate-y-[1px] hover:scale-[1.03] hover:bg-green-900/40 hover:shadow-md hover:shadow-green-500/25 active:translate-y-0 active:scale-[0.98]"
+                  }`}
+                >
+                  <Check size={12} />
+                  {postVotesByPost[videoCards[activeVideoIndex].post.id]?.confirmed ?? 0}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void voteOnPost(videoCards[activeVideoIndex].post.id, false)}
+                  disabled={!postVotesEnabled || submittingVotePostId === videoCards[activeVideoIndex].post.id}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] ${
+                    (postVotesByPost[videoCards[activeVideoIndex].post.id]?.userVote ?? null) === false
+                      ? "border-red-500 bg-red-600 text-white shadow-md shadow-red-500/30"
+                      : "border-red-400 text-red-300 transition-all duration-200 hover:-translate-y-[1px] hover:scale-[1.03] hover:bg-red-900/40 hover:shadow-md hover:shadow-red-500/25 active:translate-y-0 active:scale-[0.98]"
+                  }`}
+                >
+                  <X size={12} />
+                  {postVotesByPost[videoCards[activeVideoIndex].post.id]?.denied ?? 0}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsSequenceMuted((prev) => !prev)}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-200 transition-all duration-200 hover:-translate-y-[1px] hover:border-gray-400 hover:bg-gray-800 active:translate-y-0 active:scale-[0.98]"
+                  >
+                    {isSequenceMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    {isSequenceMuted ? "Sem áudio" : "Com áudio"}
+                  </button>
+                  <div className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-36 rounded-md border border-gray-700 bg-black/95 p-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+                    <label className="mb-1 block text-[10px] uppercase tracking-[0.08em] text-gray-400">
+                      Volume ({Math.round(sequenceVolume * 100)}%)
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(sequenceVolume * 100)}
+                      onChange={(event) => {
+                        const next = Number(event.target.value) / 100
+                        setSequenceVolume(next)
+                        setIsSequenceMuted(next <= 0)
+                      }}
+                      className="h-1.5 w-full accent-gray-200"
+                    />
+                    <p className="mt-1 text-[10px] text-gray-500">M mute • Ctrl+setas volume</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSequencePlaying((prev) => !prev)}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-200 transition-all duration-200 hover:-translate-y-[1px] hover:border-gray-400 hover:bg-gray-800 active:translate-y-0 active:scale-[0.98]"
+                >
+                  {isSequencePlaying ? <Pause size={13} /> : <Play size={13} />}
+                  {isSequencePlaying ? "Pausar" : "Reproduzir"} (K)
+                </button>
+                <button
+                  type="button"
+                  onClick={goToPrevVideo}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-200 transition-all duration-200 hover:-translate-y-[1px] hover:border-gray-400 hover:bg-gray-800 active:translate-y-0 active:scale-[0.98]"
+                >
+                  <ChevronUp size={13} />
+                  Anterior
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextVideo}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-200 transition-all duration-200 hover:-translate-y-[1px] hover:border-gray-400 hover:bg-gray-800 active:translate-y-0 active:scale-[0.98]"
+                >
+                  <ChevronDown size={13} />
+                  Próximo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVideoSequenceOpen(false)}
+                  className="rounded-md p-1 text-gray-300 transition-all duration-200 hover:-translate-y-[1px] hover:bg-gray-800 hover:text-white active:translate-y-0 active:scale-[0.96]"
+                  aria-label="Fechar sequência"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_56px_320px]">
+              <div className="flex h-[78vh] flex-col">
+                <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg bg-black">
+                  <video
+                    ref={sequenceVideoRef}
+                    key={videoCards[activeVideoIndex].post.id}
+                    src={toPostMediaSrc(videoCards[activeVideoIndex].post.media_path) ?? undefined}
+                    autoPlay
+                    loop
+                    muted={isSequenceMuted}
+                    onTimeUpdate={(event) => {
+                      const video = event.currentTarget
+                      const progress = video.duration > 0 ? (video.currentTime / video.duration) * 100 : 0
+                      setSequenceProgress(progress)
+                    }}
+                  onLoadedMetadata={() => setSequenceProgress(0)}
+                  playsInline
+                  className={`h-full w-full rounded-lg bg-black object-contain transition-all duration-200 ${
+                    isVideoSwitching ? "opacity-0 scale-[0.985]" : "opacity-100 scale-100"
+                  }`}
+                />
+              </div>
+                <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-700/60">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={sequenceProgress}
+                    onChange={(event) => {
+                      const next = Number(event.target.value)
+                      setSequenceProgress(next)
+                      const video = sequenceVideoRef.current
+                      if (!video || !Number.isFinite(video.duration) || video.duration <= 0) return
+                      video.currentTime = (next / 100) * video.duration
+                    }}
+                    className="h-full w-full cursor-pointer accent-gray-100"
+                    aria-label="Barra de reprodução do vídeo"
+                  />
+                </div>
+              </div>
+
+              <div className="hidden lg:flex h-[78vh] flex-col items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={goToPrevVideo}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-gray-600 text-gray-200 transition-all duration-200 hover:scale-105 hover:border-gray-400 hover:bg-gray-800 active:scale-95"
+                  aria-label="Vídeo anterior"
+                >
+                  <ChevronUp size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextVideo}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-gray-600 text-gray-200 transition-all duration-200 hover:scale-105 hover:border-gray-400 hover:bg-gray-800 active:scale-95"
+                  aria-label="Próximo vídeo"
+                >
+                  <ChevronDown size={18} />
+                </button>
+              </div>
+
+              <aside className="flex h-[78vh] min-h-0 flex-col overflow-hidden rounded-lg border border-gray-700 bg-gray-950/70">
+                <div className="border-b border-gray-700 px-3 py-2">
+                  <div className="mb-1 flex items-center gap-2">
+                    <UserIdentityBadge
+                      name={videoCards[activeVideoIndex].authorName}
+                      profileId={videoCards[activeVideoIndex].post.author_user_id}
+                      avatarUrl={videoCards[activeVideoIndex].authorAvatar}
+                      badgeText={toProfileBadgeText(profilesById[videoCards[activeVideoIndex].post.author_user_id])}
+                      size="xs"
+                    />
+                    {videoCards[activeVideoIndex].authorUsername ? (
+                      <span className="text-[11px] text-gray-400">
+                        @{videoCards[activeVideoIndex].authorUsername}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mb-1 text-xs text-gray-200 break-words [overflow-wrap:anywhere]">
+                    {videoCards[activeVideoIndex].post.description || "Sem legenda."}
+                  </p>
+                  <p className="text-xs font-medium uppercase tracking-[0.08em] text-gray-300">
+                    Comentários do vídeo
+                  </p>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+                  {(() => {
+                    const activePostId = videoCards[activeVideoIndex].post.id
+                    const allComments = postCommentsByPost[activePostId] ?? []
+                    const comments = allComments.filter((item) => !item.parent_comment_id)
+                    const repliesByParent = allComments.reduce<Record<string, PostCommentRow[]>>((acc, item) => {
+                      if (!item.parent_comment_id) return acc
+                      acc[item.parent_comment_id] = [...(acc[item.parent_comment_id] ?? []), item]
+                      return acc
+                    }, {})
+                    const activeReplyCommentId = activeReplyCommentIdByPost[activePostId] ?? null
+
+                    if (!comments.length) {
+                      return <p className="text-xs text-gray-400">Sem comentários por enquanto.</p>
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {comments.map((comment) => {
+                          const profile = profilesById[comment.user_id]
+                          const replies = repliesByParent[comment.id] ?? []
+                          return (
+                            <div key={comment.id} className="rounded-md border border-gray-700 bg-black/40 p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <UserIdentityBadge
+                                  name={profile?.name ?? "Usuário"}
+                                  profileId={comment.user_id}
+                                  avatarUrl={profile?.avatar_url ?? null}
+                                  badgeText={toProfileBadgeText(profile)}
+                                  size="xs"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setActiveReplyCommentIdByPost((prev) => ({
+                                      ...prev,
+                                      [activePostId]:
+                                        activeReplyCommentId === comment.id ? null : comment.id,
+                                    }))
+                                  }
+                                  className="text-[11px] text-gray-300 underline underline-offset-2 hover:text-white"
+                                >
+                                  Responder
+                                </button>
+                              </div>
+                              <p className="mt-1 text-[11px] text-gray-400">
+                                {new Date(comment.created_at).toLocaleDateString("pt-BR")}
+                              </p>
+                              <p className="mt-1 text-xs text-gray-100 break-words [overflow-wrap:anywhere]">
+                                {comment.content}
+                              </p>
+
+                              {activeReplyCommentId === comment.id ? (
+                                <div className="mt-2 flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={replyDraftByComment[comment.id] ?? ""}
+                                    onChange={(event) =>
+                                      setReplyDraftByComment((prev) => ({
+                                        ...prev,
+                                        [comment.id]: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="Responder comentário..."
+                                    className="flex-1 rounded-md border border-gray-600 bg-black/50 px-3 py-2 text-xs text-gray-100"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => void submitPostReply(activePostId, comment.id)}
+                                    disabled={
+                                      !postCommentsEnabled ||
+                                      submittingCommentPostId === activePostId
+                                    }
+                                    className="rounded-md bg-white px-3 py-2 text-xs font-medium text-black hover:bg-gray-200 disabled:opacity-60"
+                                  >
+                                    Enviar
+                                  </button>
+                                </div>
+                              ) : null}
+
+                              {replies.length > 0 ? (
+                                <div className="mt-2 space-y-1 border-l border-gray-700 pl-2">
+                                  {replies.map((reply) => {
+                                    const replyProfile = profilesById[reply.user_id]
+                                    return (
+                                      <div key={reply.id} className="rounded-md bg-black/30 p-2">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <UserIdentityBadge
+                                            name={replyProfile?.name ?? "Usuário"}
+                                            profileId={reply.user_id}
+                                            avatarUrl={replyProfile?.avatar_url ?? null}
+                                            badgeText={toProfileBadgeText(replyProfile)}
+                                            size="xs"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setActiveReplyCommentIdByPost((prev) => ({
+                                                ...prev,
+                                                [activePostId]:
+                                                  activeReplyCommentId === reply.id ? null : reply.id,
+                                              }))
+                                            }
+                                            className="text-[11px] text-gray-300 underline underline-offset-2 hover:text-white"
+                                          >
+                                            Responder
+                                          </button>
+                                        </div>
+                                        <p className="mt-1 text-[11px] text-gray-400">
+                                          {new Date(reply.created_at).toLocaleDateString("pt-BR")}
+                                        </p>
+                                        <p className="mt-1 text-xs text-gray-100 break-words [overflow-wrap:anywhere]">
+                                          {reply.content}
+                                        </p>
+                                        {activeReplyCommentId === reply.id ? (
+                                          <div className="mt-2 flex items-center gap-2">
+                                            <input
+                                              type="text"
+                                              value={replyDraftByComment[reply.id] ?? ""}
+                                              onChange={(event) =>
+                                                setReplyDraftByComment((prev) => ({
+                                                  ...prev,
+                                                  [reply.id]: event.target.value,
+                                                }))
+                                              }
+                                              placeholder="Responder comentário..."
+                                              className="flex-1 rounded-md border border-gray-600 bg-black/50 px-3 py-2 text-xs text-gray-100"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => void submitPostReply(activePostId, reply.id)}
+                                              disabled={
+                                                !postCommentsEnabled ||
+                                                submittingCommentPostId === activePostId
+                                              }
+                                              className="rounded-md bg-white px-3 py-2 text-xs font-medium text-black hover:bg-gray-200 disabled:opacity-60"
+                                            >
+                                              Enviar
+                                            </button>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()}
+                </div>
+                <div className="border-t border-gray-700 p-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={commentDraftByPost[videoCards[activeVideoIndex].post.id] ?? ""}
+                      onChange={(event) =>
+                        setCommentDraftByPost((prev) => ({
+                          ...prev,
+                          [videoCards[activeVideoIndex].post.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Comentar este vídeo..."
+                      className="flex-1 rounded-md border border-gray-600 bg-black/50 px-3 py-2 text-xs text-gray-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void submitPostComment(videoCards[activeVideoIndex].post.id)}
+                      disabled={
+                        !postCommentsEnabled ||
+                        submittingCommentPostId === videoCards[activeVideoIndex].post.id
+                      }
+                      className="rounded-md bg-white px-3 py-2 text-xs font-medium text-black hover:bg-gray-200 disabled:opacity-60"
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }
@@ -1552,3 +2297,6 @@ const toProfileBadgeText = (profile: ProfileRow | undefined) => {
   if (profile.is_consultant_verified) return "Consultor verificado"
   return null
 }
+
+
+

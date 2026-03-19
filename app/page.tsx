@@ -31,7 +31,7 @@ const methodSteps = [
 ]
 
 export default async function Home() {
-  const cars = await getHomeFeaturedCars()
+  const cars = await getHomeFeaturedCars({ fixedOnly: true })
 
   return (
     <main className="bg-white text-gray-900">

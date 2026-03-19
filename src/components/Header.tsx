@@ -167,12 +167,38 @@ const toTimestamp = (value: string | null | undefined) => {
 const notificationsCacheKey = (userId: string) => `notifications:cache:${userId}`
 const notificationsReadKey = (userId: string) => `notifications:read:${userId}`
 
+const PistonIcon = ({ size = 14 }: { size?: number }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3.2" y="4.2" width="6.8" height="4.8" rx="1" transform="rotate(-32 6.6 6.6)" />
+    <path d="M4 6.4h5.2" transform="rotate(-32 6.6 6.6)" />
+    <path d="M7.8 8.6l3.2 5.3" />
+
+    <rect x="14" y="4.2" width="6.8" height="4.8" rx="1" transform="rotate(32 17.4 6.6)" />
+    <path d="M14.8 6.4H20" transform="rotate(32 17.4 6.6)" />
+    <path d="M16.2 8.6l-3.2 5.3" />
+
+    <circle cx="12" cy="18" r="2.6" />
+  </svg>
+)
+
 export default function Header() {
   const [scrolled, setScrolled] = useState(false)
   const [profileName, setProfileName] = useState<string | null>(null)
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null)
   const [profileUsername, setProfileUsername] = useState<string | null>(null)
   const [profilePlan, setProfilePlan] = useState<string | null>(null)
+  const [canAccessModeration, setCanAccessModeration] = useState(false)
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
@@ -318,6 +344,7 @@ export default function Header() {
         setProfileAvatar(null)
         setProfileUsername(null)
         setProfilePlan(null)
+        setCanAccessModeration(false)
         return
       }
 
@@ -340,6 +367,10 @@ export default function Header() {
           setProfileUsername(fallback.data.username ?? null)
           setProfilePlan((fallback.data.plan as string | null) ?? null)
         }
+        const moderationCheck = await supabase.rpc("is_moderation_admin", {
+          p_user_id: user.id,
+        })
+        setCanAccessModeration(!moderationCheck.error && Boolean(moderationCheck.data))
         return
       }
 
@@ -349,6 +380,11 @@ export default function Header() {
         setProfileUsername(data.username ?? null)
         setProfilePlan((data.plan as string | null) ?? null)
       }
+
+      const moderationCheck = await supabase.rpc("is_moderation_admin", {
+        p_user_id: user.id,
+      })
+      setCanAccessModeration(!moderationCheck.error && Boolean(moderationCheck.data))
     }
 
     fetchProfile()
@@ -535,7 +571,7 @@ export default function Header() {
         : isMention
           ? `${actorName} mencionou voce`
           : isOnOwnedContent
-            ? `${actorName} comentou em um conteudo seu`
+            ? `${actorName} comentou em um conteúdo seu`
             : `${actorName} comentou em uma discussao sua`
 
       items.push({
@@ -1400,6 +1436,18 @@ export default function Header() {
           <div className="hidden lg:flex items-center gap-2">
             <div className="relative group">
               <Link
+                href="/feed?pistoes=1"
+                aria-label="Abrir Pistões"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-2.5 py-2 text-gray-700 hover:text-black hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
+              >
+                <PistonIcon size={16} />
+              </Link>
+              <span className="pointer-events-none absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 rounded-md bg-black px-2 py-1 text-[11px] font-medium text-white opacity-0 shadow-md transition-all duration-150 group-hover:opacity-100 group-hover:translate-y-0 translate-y-1 whitespace-nowrap">
+                Pistões
+              </span>
+            </div>
+            <div className="relative group">
+              <Link
                 href="/feed"
                 aria-label="Abrir feed"
                 className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-2.5 py-2 text-gray-700 hover:text-black hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
@@ -1615,7 +1663,7 @@ export default function Header() {
                   Marcas
                 </Link>
               ) : null}
-              {user && profilePlan === "profissional" ? (
+              {user && canAccessModeration ? (
                 <Link
                   href="/admin/moderacao"
                   onClick={() => setMenuOpen(false)}
@@ -1729,3 +1777,4 @@ export default function Header() {
     </header>
   )
 }
+
