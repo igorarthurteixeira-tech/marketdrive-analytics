@@ -4,6 +4,7 @@ import Link from "next/link"
 import { FormEvent, Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/AuthProvider"
+import { formatPostMediaUploadError, validatePostMediaFile } from "@/lib/postMedia"
 import { supabase } from "@/lib/supabaseClient"
 
 type EditablePost = {
@@ -173,12 +174,19 @@ function EditarPostagemPageContent() {
     let nextMediaKind: "image" | "video" | null = mediaKind || null
 
     if (mediaFile) {
+      const mediaValidationError = validatePostMediaFile(mediaFile, mediaKind)
+      if (mediaValidationError) {
+        setErrorMessage(mediaValidationError)
+        setSubmitting(false)
+        return
+      }
+
       const extension = mediaFile.name.split(".").pop()?.toLowerCase() ?? "bin"
       const fileName = `${Date.now()}-${session.user.id}.${extension}`
       const upload = await supabase.storage.from("posts-media").upload(fileName, mediaFile)
 
       if (upload.error) {
-        setErrorMessage(`Falha no upload da mídia: ${upload.error.message}`)
+        setErrorMessage(formatPostMediaUploadError(upload.error.message, mediaFile, mediaKind))
         setSubmitting(false)
         return
       }
@@ -324,6 +332,10 @@ function EditarPostagemPageContent() {
               }}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
             />
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Limites de upload: fotos ate 10 MB e videos ate 50 MB.
           </div>
 
           {post.media_path ? (
